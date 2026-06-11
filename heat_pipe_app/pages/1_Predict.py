@@ -1,23 +1,23 @@
 """Page 1 - Forward prediction with predictive uncertainty, a domain guard,
-and the equivalent thermal conductivity k_eq."""
+and the equivalent thermal conductivity k_eq (fixed geometry, Q = 40 W)."""
 import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 
 import core
 from app_utils import (get_assets, cached_grid, inject_css, page_header, input_sliders,
-                       domain_badge, metric_card, html_label, base_layout, add_training_points,
-                       PLOTLY_CONFIG, SYM, AX, C_PRIMARY, C_ACCENT, C_OK, MUTED)
+                       synced_input, domain_badge, metric_card, base_layout,
+                       add_training_points, PLOTLY_CONFIG, SYM, AX, U,
+                       C_PRIMARY, C_ACCENT, C_OK, MUTED)
 
 st.set_page_config(page_title="Predict", page_icon="\U0001f321\ufe0f", layout="wide")
 inject_css()
 A = get_assets()
 
-Q_WATT = 40.0   # total power, fixed per the project (Q = 40 W)
-
 page_header("Forward Prediction",
-            "Set a design point; get R_th, dP_tot and the equivalent thermal conductivity, "
-            "each with a predictive interval and a trust signal.")
+            f"Set a design point; get {SYM['r_th']}, {SYM['p_tot']} and the equivalent "
+            f"thermal conductivity {SYM['k_eq']}, each with a predictive interval and a "
+            f"trust signal.")
 
 left, right = st.columns([1, 1.4], gap="large")
 
@@ -29,25 +29,17 @@ with left:
     ptot_max = st.number_input("Pressure-drop constraint (Pa)",
                                value=core.PTOT_MAX_DEFAULT, step=100.0)
 
-    with st.expander(f"Geometry for k\u209b\u2091 (Q = {Q_WATT:.0f} W fixed)", expanded=False):
-        st.caption("Equivalent thermal conductivity depends on the heat-pipe geometry. "
-                   "Set the effective length and outer diameter of your device.")
-        D_mm = st.number_input("Outer diameter D (mm)", value=6.0, min_value=0.5,
-                               step=0.5, format="%.2f")
-        L_mm = st.number_input("Effective length L_eff (mm)", value=150.0, min_value=1.0,
-                               step=5.0, format="%.1f")
-
     u = core.predict_with_uncertainty(A, [vp, po], k=float(k))
     status = core.domain_status(A, [vp, po])
 
     r_th = float(u["r_th"][0]); p_tot = float(u["p_tot"][0])
 
-    # --- equivalent thermal conductivity -----------------------------------
-    # dT = Q * R_th ;  k_eq = Q*L/(A_c*dT) = L/(A_c*R_th)
-    A_c = np.pi * (D_mm / 1000.0) ** 2 / 4.0      # m^2
-    L_eff = L_mm / 1000.0                          # m
-    dT = Q_WATT * r_th                             # K
-    k_eq = L_eff / (A_c * r_th) if r_th > 0 else float("nan")
+    # equivalent thermal conductivity with the FIXED parameters
+    # A_c = 9.31e-6 m^2, L_eff = 0.14 m, Q = 40 W
+    dT = core.Q_WATT * r_th
+    k_eq = core.k_eq_from_rth(r_th)
+    k_eq_lo = core.k_eq_from_rth(float(u["r_th_hi"][0]))   # high R_th -> low k_eq
+    k_eq_hi = core.k_eq_from_rth(float(u["r_th_lo"][0]))
 
     st.subheader("Prediction")
     feasible = p_tot <= ptot_max
@@ -61,8 +53,10 @@ with left:
                 value_color=(C_OK if feasible else C_ACCENT))
 
     metric_card(SYM["k_eq"] + "&nbsp;&nbsp;(W m\u207b\u00b9 K\u207b\u00b9)", f"{k_eq:,.0f}",
-                sub=f"{SYM['dT']} = Q\u00b7{SYM['r_th']} = {dT:.2f} K  "
-                    f"(A_c = {A_c*1e6:.2f} mm\u00b2, L_eff = {L_mm:.0f} mm)")
+                sub=f"band [{k_eq_lo:,.0f}, {k_eq_hi:,.0f}] &nbsp;|&nbsp; "
+                    f"{SYM['dT']} = Q\u00b7{SYM['r_th']} = {dT:.2f} K "
+                    f"(Q = {core.Q_WATT:.0f} W, A<sub>c</sub> = 9.31\u00d710\u207b\u2076 m\u00b2, "
+                    f"L<sub>eff</sub> = {core.L_EFF:.2f} m)")
 
     st.markdown(
         f"<b>Constraint:</b> {'feasible' if feasible else 'violates limit'} "
@@ -72,9 +66,9 @@ with left:
     domain_badge(status)
 
 with right:
-    metric = st.radio("Response surface", ["R_th", "dP_tot"], horizontal=True,
+    metric = st.radio("Response surface", [U["r_th"], U["p_tot"]], horizontal=True,
                       key="pred_metric", label_visibility="collapsed")
-    is_rth = (metric == "R_th")
+    is_rth = (metric == U["r_th"])
     VP, PO, R, P = cached_grid(80, 80)
     Z = R if is_rth else P
     colorscale = "Viridis" if is_rth else "Plasma"

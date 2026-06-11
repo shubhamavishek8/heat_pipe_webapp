@@ -62,6 +62,19 @@ UB = np.array([BOUNDS["vp_vs"][1], BOUNDS["po"][1]])
 PTOT_MAX_DEFAULT = 4200.0      # default constraint limit (Pa)
 FEAS_TOL = 1e-3                # engineering tolerance on p_tot
 
+# Fixed heat-pipe parameters for equivalent thermal conductivity (user-specified)
+Q_WATT = 40.0                  # total power (W)
+A_CROSS = 9.31e-6              # cross-sectional area (m^2)
+L_EFF = 0.14                   # effective length (m)
+
+
+def k_eq_from_rth(r_th: float) -> float:
+    """Equivalent thermal conductivity k_eq = L_eff / (A_c * R_th)  [W/m/K].
+
+    Derivation: R_th = dT/Q and k_eq = Q*L_eff/(A_c*dT) => Q cancels; the
+    fixed Q = 40 W enters only through dT = Q*R_th shown alongside."""
+    return L_EFF / (A_CROSS * r_th) if r_th > 0 else float("nan")
+
 
 # --------------------------------------------------------------------------- #
 # Asset loading
@@ -247,16 +260,34 @@ def optimize_min_rth(assets: Assets, ptot_max: float = PTOT_MAX_DEFAULT,
 
 
 def grid_search_min_rth(assets: Assets, ptot_max: float = PTOT_MAX_DEFAULT,
-                        n_vp: int = 121, n_po: int = 121):
+                        step_vp: float = 0.05, step_po: float = 0.01):
     """
-    Exhaustive grid search: evaluate the surrogate on an n_vp x n_po lattice
-    over the box bounds, discard cells violating p_tot <= ptot_max, and return
-    the feasible cell of minimum r_th. Same result schema as optimize_min_rth.
+    Exhaustive grid search defined by STEP SIZE (gap between lattice points),
+    matching the original pipeline's range-and-distance formulation. The range
+    is fixed to the data bounds; the user controls only the spacing.
 
-    Deterministic and global on the lattice (no local-minimum risk), but its
-    accuracy is limited by the grid spacing rather than solver tolerance.
+    step_vp : lattice spacing along Vp:Vs   (default 0.05, as in the script)
+    step_po : lattice spacing along porosity (default 0.01, as in the script)
+
+    The upper bound is always included even when (ub - lb) is not an exact
+    multiple of the step. Deterministic and global on the lattice; accuracy is
+    limited by the spacing rather than solver tolerance. Same result schema as
+    optimize_min_rth.
     """
-    VP, PO, R, P = evaluate_grid(assets, n_vp, n_po)
+    def axis(lb, ub, step):
+        vals = np.arange(lb, ub + 1e-12, step)
+        if vals.size == 0 or vals[-1] < ub - 1e-9:
+            vals = np.append(vals, ub)
+        return vals
+
+    gx = axis(LB[0], UB[0], float(step_vp))
+    gy = axis(LB[1], UB[1], float(step_po))
+    VP, PO = np.meshgrid(gx, gy)
+    pts = np.column_stack([VP.ravel(), PO.ravel()])
+    y = predict(assets, pts)
+    R = y[:, 0].reshape(VP.shape)
+    P = y[:, 1].reshape(VP.shape)
+
     feasible = P <= ptot_max + FEAS_TOL
     if not feasible.any():
         return None
@@ -266,7 +297,9 @@ def grid_search_min_rth(assets: Assets, ptot_max: float = PTOT_MAX_DEFAULT,
     r, p = float(R[iy, ix]), float(P[iy, ix])
     return {"vp_vs": vp, "po": po, "r_th": r, "p_tot": p,
             "slack": float(ptot_max - p), "ptot_max": float(ptot_max),
-            "method": "Grid search", "grid": (int(n_vp), int(n_po)),
+            "method": "Grid search",
+            "step": (float(step_vp), float(step_po)),
+            "grid": (int(gx.size), int(gy.size)),
             "n_eval": int(VP.size), "n_feasible": int(feasible.sum())}
 
 

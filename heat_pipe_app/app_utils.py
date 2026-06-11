@@ -5,15 +5,17 @@ core.py stays pure (no streamlit) so it remains unit-testable; this module is
 the thin Streamlit layer: cached loaders, theming, plot styling, the variable
 symbol system, and reusable widgets.
 
-Typography rules:
-    * General UI font: the clean default sans (set in .streamlit/config.toml).
-    * Variables are rendered in Times New Roman with correct italics/subscripts:
-        V_p:V_s        upright italic-free ratio, p and s as subscripts
-        epsilon        italic
-        R_th, P_tot    R and P italic, subscripts upright, Delta upright
-        k_eq, k_eff    k italic, subscript upright
-      In app text -> SYM[...] (Times-New-Roman <span>).
-      In figures  -> AX[...]  (whole figure font is already Times New Roman).
+THEME: the light theme is FORCED via CSS in inject_css() so it applies even if
+.streamlit/config.toml is missing or unread on the host (the failure observed
+on Streamlit Cloud when the file isn't at the repository root). Figures use an
+opaque WHITE paper so axis labels/legends are readable on any page background.
+
+TYPOGRAPHY: general UI font is the default sans; variables render in Times New
+Roman with correct italics/subscripts:
+    SYM[...]  -> HTML spans for app text (V_p:V_s, italic eps, R_th, dP_tot, k_eq)
+    AX[...]   -> figure axis-title strings (figures are wholly Times New Roman)
+    U[...]    -> plain-unicode fallbacks for widget labels that cannot render
+                 HTML (e.g. st.radio options)
 """
 import streamlit as st
 import numpy as np
@@ -24,20 +26,23 @@ import core
 # --------------------------------------------------------------------------- #
 # Light palette (dark text for contrast)
 # --------------------------------------------------------------------------- #
-C_PRIMARY = "#1f5fb0"   # blue   (lines, markers, headers)
-C_ACCENT  = "#c0392b"   # red    (constraint)
-C_OK      = "#1e8449"   # green  (feasible)
-C_WARN    = "#b9770e"   # amber  (moderate)
-C_PURPLE  = "#6f54b0"   # secondary series
+C_PRIMARY = "#1f5fb0"
+C_ACCENT  = "#c0392b"
+C_OK      = "#1e8449"
+C_WARN    = "#b9770e"
+C_PURPLE  = "#6f54b0"
 
-TEXT   = "#1a2230"      # primary dark text
-MUTED  = "#5a6675"      # captions / secondary
-METRIC = "#1f4e79"      # metric values
-PANEL  = "#ffffff"      # plot panel background (white)
-GRID   = "#e1e6ee"      # subtle grid lines
-AXLINE = "#3a4656"      # axis / box border
-CARD_BG = "#f5f7fb"     # metric-card background
-BORDER  = "#dfe4ec"     # card / element borders
+TEXT   = "#1a2230"
+MUTED  = "#5a6675"
+METRIC = "#1f4e79"
+PAPER  = "#ffffff"      # figure canvas - opaque white, never transparent
+PANEL  = "#ffffff"      # plot panel background
+GRID   = "#e1e6ee"
+AXLINE = "#3a4656"
+CARD_BG = "#f5f7fb"
+BORDER  = "#dfe4ec"
+BG      = "#ffffff"     # app background
+BG_SIDE = "#eef2f8"     # sidebar background
 
 FONT_TNR = "'Times New Roman', Times, serif"
 
@@ -56,7 +61,6 @@ PLOTLY_CONFIG = {
 def _tnr(inner: str) -> str:
     return f'<span style="font-family:{FONT_TNR}">{inner}</span>'
 
-# HTML snippets for use inside Streamlit markdown / labels / cards
 SYM = {
     "vp_vs": _tnr("V<sub>p</sub>:V<sub>s</sub>"),
     "po":    _tnr("<i>&epsilon;</i>"),
@@ -67,13 +71,22 @@ SYM = {
     "dT":    _tnr("&Delta;<i>T</i>"),
 }
 
-# Axis-title strings for figures (whole figure font is already Times New Roman)
 AX = {
     "vp_vs": "V<sub>p</sub>:V<sub>s</sub>",
     "po":    "<i>\u03b5</i>  (porosity)",
     "r_th":  "<i>R</i><sub>th</sub>  (K/W)",
     "p_tot": "\u0394<i>P</i><sub>tot</sub>  (Pa)",
     "k_eq":  "<i>k</i><sub>eq</sub>  (W m\u207b\u00b9 K\u207b\u00b9)",
+    "sigma": "\u03c3(<i>R</i><sub>th</sub>)  (K/W)",
+}
+
+# Plain-unicode labels for widgets that cannot render HTML (radio options etc.)
+U = {
+    "r_th":  "R\u209c\u2095",
+    "p_tot": "\u0394P\u209c\u2092\u209c",
+    "sigma": "\u03c3(R\u209c\u2095) model uncertainty",
+    "vp_vs": "V\u209a:V\u209b",
+    "po":    "\u03b5",
 }
 
 
@@ -90,26 +103,84 @@ def cached_grid(n_vp: int, n_po: int):
     return core.evaluate_grid(get_assets(), n_vp, n_po)
 
 
+@st.cache_data(show_spinner=False)
+def cached_sigma_grid(n_vp: int, n_po: int):
+    """Grid of the GPR predictive std of R_th in physical units (K/W)."""
+    A = get_assets()
+    gx = np.linspace(*core.BOUNDS["vp_vs"], n_vp)
+    gy = np.linspace(*core.BOUNDS["po"], n_po)
+    VP, PO = np.meshgrid(gx, gy)
+    pts = np.column_stack([VP.ravel(), PO.ravel()])
+    u = core.predict_with_uncertainty(A, pts, k=1.0)
+    SIG = u["r_th_sigma"].reshape(VP.shape)
+    return VP, PO, SIG
+
+
 @st.cache_data(show_spinner="Tracing the Pareto front\u2026")
 def cached_pareto(n: int):
     return core.pareto_front(get_assets(), n=n)
 
 
 # --------------------------------------------------------------------------- #
-# Theming / chrome
+# Theming / chrome  (FORCED light theme - works without config.toml)
 # --------------------------------------------------------------------------- #
 def inject_css():
     st.markdown(
         f"""
         <style>
+          /* ---------- forced light theme (independent of config.toml) ----- */
+          .stApp, [data-testid="stAppViewContainer"],
+          [data-testid="stMain"] {{ background-color: {BG} !important; }}
+          [data-testid="stHeader"] {{ background-color: {BG} !important; }}
+          [data-testid="stSidebar"] {{ background-color: {BG_SIDE} !important; }}
+          [data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
+          [data-testid="stSidebarNav"] a span {{ color: {TEXT} !important; }}
+
+          /* all body text dark */
+          .stApp p, .stApp span, .stApp label, .stApp li, .stApp td, .stApp th,
+          .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
+          [data-testid="stWidgetLabel"] *, [data-testid="stMarkdownContainer"] *
+          {{ color: {TEXT}; }}
+          [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] *
+          {{ color: {MUTED} !important; }}
+
+          /* widgets: inputs, selects */
+          [data-baseweb="input"], [data-baseweb="select"] > div
+          {{ background-color: #ffffff !important; border-color: #c9d2de !important; }}
+          [data-baseweb="input"] input, [data-baseweb="select"] *
+          {{ color: {TEXT} !important; }}
+          [data-testid="stNumberInput"] button
+          {{ background-color: #eef2f8 !important; color: {TEXT} !important; }}
+
+          /* sliders: thumb value, min/max ticks readable */
+          [data-testid="stSliderThumbValue"] {{ color: {C_ACCENT} !important; }}
+          [data-testid="stTickBar"] * {{ color: {MUTED} !important; }}
+
+          /* radio / checkbox text */
+          [data-testid="stRadio"] label p, [data-testid="stCheckbox"] label p
+          {{ color: {TEXT} !important; }}
+
+          /* code chips */
+          code {{ background-color: #eef2f8 !important; color: #b02a50 !important; }}
+
+          /* alerts (info/success/warning/error) -> light card, dark text */
+          [data-testid="stAlert"]
+          {{ background-color: #eef3fa !important; border: 1px solid {BORDER}; }}
+          [data-testid="stAlert"] * {{ color: {TEXT} !important; }}
+
+          /* expanders */
+          [data-testid="stExpander"]
+          {{ background-color: #ffffff; border: 1px solid {BORDER}; border-radius: 8px; }}
+          [data-testid="stExpander"] summary span {{ color: {TEXT} !important; }}
+
           .block-container {{ padding-top: 2rem; max-width: 1200px; }}
-          /* Remove Streamlit chrome for a professional look */
+
+          /* hide Streamlit chrome */
           #MainMenu {{ visibility: hidden; }}
           footer {{ visibility: hidden; }}
           [data-testid="stStatusWidget"] {{ visibility: hidden; }}
           [data-testid="stDecoration"] {{ display: none; }}
           [data-testid="stToolbar"] {{ visibility: hidden; }}
-          header[data-testid="stHeader"] {{ background: transparent; }}
 
           div[data-testid="stMetricValue"] {{ color: {METRIC}; font-weight: 700; }}
           div[data-testid="stMetricLabel"] {{ color: {TEXT}; }}
@@ -135,17 +206,12 @@ def page_header(title: str, subtitle: str = ""):
 # Widgets
 # --------------------------------------------------------------------------- #
 def html_label(html: str):
-    """Render an HTML label (allows Times-New-Roman variables) above a widget
-    whose own label is collapsed."""
     st.markdown(f"<div class='html-label'>{html}</div>", unsafe_allow_html=True)
 
 
 def metric_card(label_html: str, value: str, sub: str = "", value_color: str = None):
-    """A metric-style card whose label may contain Times-New-Roman variables.
-
-    The HTML is emitted as a SINGLE line with no leading whitespace: multi-line
-    indented HTML makes Streamlit's Markdown parser treat trailing tags as an
-    indented code block (the stray '</div>' artifact)."""
+    """A metric-style card; HTML emitted as a SINGLE line (multi-line indented
+    HTML makes the Markdown parser print trailing tags as a code block)."""
     color = value_color or METRIC
     sub_html = (f'<div style="font-size:0.82rem;color:{MUTED};margin-top:2px">{sub}</div>'
                 if sub else "")
@@ -160,16 +226,61 @@ def metric_card(label_html: str, value: str, sub: str = "", value_color: str = N
     st.markdown(html, unsafe_allow_html=True)
 
 
+def synced_input(label_html_str, lo, hi, default, step, key, fmt="%.3f"):
+    """A slider AND a number box bound to the same value.
+
+    - The slider shows its EXACT value (format=fmt matches the step
+      granularity, fixing the 'thumb label does not change' issue).
+    - The number box lets the user type a raw value directly; it is clipped to
+      the bounds. Whichever control moved last wins, via on_change callbacks.
+    """
+    skey, nkey = f"{key}_sl", f"{key}_nb"
+    if skey not in st.session_state:
+        st.session_state[skey] = float(default)
+    if nkey not in st.session_state:
+        st.session_state[nkey] = float(default)
+
+    def _from_slider():
+        st.session_state[nkey] = st.session_state[skey]
+
+    def _from_number():
+        v = float(np.clip(st.session_state[nkey], lo, hi))
+        st.session_state[nkey] = v
+        st.session_state[skey] = v
+
+    if label_html_str:
+        html_label(label_html_str)
+    c1, c2 = st.columns([2.6, 1])
+    with c1:
+        st.slider(f"{key} (slider)", float(lo), float(hi), step=float(step),
+                  format=fmt, key=skey, on_change=_from_slider,
+                  label_visibility="collapsed")
+    with c2:
+        st.number_input(f"{key} (direct input)", float(lo), float(hi),
+                        step=float(step), format=fmt, key=nkey,
+                        on_change=_from_number, label_visibility="collapsed")
+    return float(st.session_state[skey])
+
+
 def input_sliders(default_vp=0.5, default_po=0.6, key_prefix=""):
+    """The two design-variable controls: synced slider + direct-input box."""
     lo_vp, hi_vp = core.BOUNDS["vp_vs"]
     lo_po, hi_po = core.BOUNDS["po"]
-    html_label(SYM["vp_vs"] + "&nbsp;&nbsp;(wick volume ratio)")
-    vp = st.slider("Vp:Vs", float(lo_vp), float(hi_vp), float(default_vp),
-                   step=0.005, key=f"{key_prefix}vp", label_visibility="collapsed")
-    html_label(SYM["po"] + "&nbsp;&nbsp;(porosity)")
-    po = st.slider("porosity", float(lo_po), float(hi_po), float(default_po),
-                   step=0.005, key=f"{key_prefix}po", label_visibility="collapsed")
+    vp = synced_input(SYM["vp_vs"] + "&nbsp;&nbsp;(wick volume ratio)",
+                      lo_vp, hi_vp, default_vp, 0.005, f"{key_prefix}vp")
+    po = synced_input(SYM["po"] + "&nbsp;&nbsp;(porosity)",
+                      lo_po, hi_po, default_po, 0.005, f"{key_prefix}po")
     return vp, po
+
+
+LEVEL_STYLE = {
+    "high":     (C_OK,     "High confidence",
+                 "Inside the data hull; predictive uncertainty is low."),
+    "moderate": (C_WARN,   "Moderate confidence",
+                 "Near the edge of the sampled region - treat with care."),
+    "low":      (C_ACCENT, "Low confidence / extrapolation",
+                 "Outside the trusted region - the surrogate is guessing."),
+}
 
 
 def domain_badge(status: dict):
@@ -185,27 +296,13 @@ def domain_badge(status: dict):
     )
 
 
-LEVEL_STYLE = {
-    "high":     (C_OK,     "High confidence",
-                 "Inside the data hull; predictive uncertainty is low."),
-    "moderate": (C_WARN,   "Moderate confidence",
-                 "Near the edge of the sampled region - treat with care."),
-    "low":      (C_ACCENT, "Low confidence / extrapolation",
-                 "Outside the trusted region - the surrogate is guessing."),
-}
-
-
 # --------------------------------------------------------------------------- #
-# Plot styling
+# Plot styling - WHITE opaque paper so labels are readable on any page theme
 # --------------------------------------------------------------------------- #
 def base_layout(fig: go.Figure, height=480, legend_below=True):
-    """Light, boxed, Times-New-Roman 2-D figure styling.
-
-    Note: we deliberately do NOT set layout.title (setting title.font without
-    title.text makes the frontend render the literal 'undefined')."""
     fig.update_layout(
         height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor=PAPER,
         plot_bgcolor=PANEL,
         margin=dict(l=78, r=80, t=30, b=92 if legend_below else 60),
         font=dict(family=FONT_TNR, size=14, color=TEXT),
@@ -221,7 +318,7 @@ def base_layout(fig: go.Figure, height=480, legend_below=True):
             bgcolor="rgba(255,255,255,0.9)", bordercolor=BORDER, borderwidth=1))
 
     axis_common = dict(
-        showline=True, linewidth=1.6, linecolor=AXLINE, mirror=True,   # full BOX
+        showline=True, linewidth=1.6, linecolor=AXLINE, mirror=True,
         showgrid=True, gridcolor=GRID, zeroline=False,
         title_font=dict(family=FONT_TNR, size=17, color=TEXT),
         tickfont=dict(family=FONT_TNR, size=13, color=TEXT),
@@ -242,7 +339,6 @@ def base_layout(fig: go.Figure, height=480, legend_below=True):
 
 
 def style_scene(fig: go.Figure, height=640):
-    """Light, boxed, Times-New-Roman 3-D (scene) styling."""
     def ax(title):
         return dict(
             title=dict(text=title, font=dict(family=FONT_TNR, size=15, color=TEXT)),
@@ -253,7 +349,7 @@ def style_scene(fig: go.Figure, height=640):
         )
     fig.update_layout(
         height=height,
-        paper_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor=PAPER,
         margin=dict(l=10, r=10, t=30, b=10),
         font=dict(family=FONT_TNR, size=14, color=TEXT),
         legend=dict(orientation="h", yanchor="top", y=0.02, xanchor="center", x=0.5,

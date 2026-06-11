@@ -1,25 +1,30 @@
-"""Page 4 - 3D interactive insight: response surface over the design space."""
+"""Page 4 - 3D interactive insights: response surfaces AND the GPR
+model-uncertainty surface over the design space."""
 import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 
 import core
-from app_utils import (get_assets, cached_grid, inject_css, page_header, style_scene,
-                       PLOTLY_CONFIG, SYM, AX, C_ACCENT, TEXT, FONT_TNR)
+from app_utils import (get_assets, cached_grid, cached_sigma_grid, inject_css,
+                       page_header, style_scene, PLOTLY_CONFIG, SYM, AX, U,
+                       C_ACCENT, C_PRIMARY, TEXT, FONT_TNR)
 
 st.set_page_config(page_title="3D Insight", page_icon="\U0001f321\ufe0f", layout="wide")
 inject_css()
 A = get_assets()
 
 page_header("3D Interactive Insight",
-            "Rotate, zoom and pan the surrogate response surface over the design space. "
-            "For the pressure drop, a translucent limit plane shows the feasibility cut.")
+            f"Rotate, zoom and pan the surrogate surfaces over the design space: the two "
+            f"responses ({SYM['r_th']}, {SYM['p_tot']}) and the model's own uncertainty "
+            f"\u03c3({SYM['r_th']}) - where the surrogate can and cannot be trusted.")
 
-ctrl = st.columns([1, 1, 1])
+ctrl = st.columns([1.4, 1, 1])
 with ctrl[0]:
-    which = st.radio("Surface", ["R_th", "dP_tot"], horizontal=True, label_visibility="collapsed")
+    which = st.radio("Surface", [U["r_th"], U["p_tot"], U["sigma"]],
+                     horizontal=True, label_visibility="collapsed")
 with ctrl[1]:
-    ptot_max = st.number_input("Pressure-drop limit (Pa)", value=core.PTOT_MAX_DEFAULT, step=100.0)
+    ptot_max = st.number_input("Pressure-drop limit (Pa)",
+                               value=core.PTOT_MAX_DEFAULT, step=100.0)
 with ctrl[2]:
     show_pts = st.checkbox("Show FEM samples", value=True)
     show_opt = st.checkbox("Show optimum", value=True)
@@ -27,11 +32,15 @@ with ctrl[2]:
 VP, PO, R, P = cached_grid(70, 70)
 gx, gy = VP[0], PO[:, 0]
 
-is_rth = (which == "R_th")
-Z = R if is_rth else P
-col = 0 if is_rth else 1
-zlabel = AX["r_th"] if is_rth else AX["p_tot"]
-surf_scale = "Viridis" if is_rth else "Plasma"
+mode = "rth" if which == U["r_th"] else ("ptot" if which == U["p_tot"] else "sigma")
+
+if mode == "sigma":
+    _, _, Z = cached_sigma_grid(70, 70)
+    zlabel, surf_scale = AX["sigma"], "Magma"
+else:
+    Z = R if mode == "rth" else P
+    zlabel = AX["r_th"] if mode == "rth" else AX["p_tot"]
+    surf_scale = "Viridis" if mode == "rth" else "Plasma"
 
 fig = go.Figure()
 fig.add_trace(go.Surface(
@@ -43,25 +52,39 @@ fig.add_trace(go.Surface(
     hovertemplate="V<sub>p</sub>:V<sub>s</sub>=%{x:.3f}<br><i>\u03b5</i>=%{y:.3f}<br>"
                   + zlabel + "=%{z:.3g}<extra></extra>"))
 
-if not is_rth:
+# Constraint plane (only meaningful on the pressure-drop surface)
+if mode == "ptot":
     plane = np.full_like(Z, ptot_max)
     fig.add_trace(go.Surface(
         x=gx, y=gy, z=plane, showscale=False, opacity=0.35,
         colorscale=[[0, C_ACCENT], [1, C_ACCENT]],
         name=f"limit = {ptot_max:.0f} Pa", hoverinfo="skip", showlegend=True))
 
+# FEM training samples
 if show_pts:
+    if mode == "sigma":
+        u_tr = core.predict_with_uncertainty(A, A.X_train, k=1.0)
+        z_tr = u_tr["r_th_sigma"]
+        pt_name = "FEM samples (\u03c3 at sample)"
+    else:
+        z_tr = A.y_train[:, 0 if mode == "rth" else 1]
+        pt_name = "FEM samples (n=49)"
     fig.add_trace(go.Scatter3d(
-        x=A.X_train[:, 0], y=A.X_train[:, 1], z=A.y_train[:, col],
-        mode="markers", name="FEM samples (n=49)",
+        x=A.X_train[:, 0], y=A.X_train[:, 1], z=z_tr,
+        mode="markers", name=pt_name,
         marker=dict(size=4, color="#1a2230", line=dict(width=1, color="white")),
         hovertemplate="V<sub>p</sub>:V<sub>s</sub>=%{x:.3f}<br><i>\u03b5</i>=%{y:.3f}<br>"
                       + zlabel + "=%{z:.3g}<extra></extra>"))
 
+# Constrained optimum marker
 if show_opt:
     sol = core.optimize_min_rth(A, ptot_max=ptot_max)
     if sol is not None:
-        zopt = sol["r_th"] if is_rth else sol["p_tot"]
+        if mode == "sigma":
+            zopt = float(core.predict_with_uncertainty(
+                A, [sol["vp_vs"], sol["po"]], k=1.0)["r_th_sigma"][0])
+        else:
+            zopt = sol["r_th"] if mode == "rth" else sol["p_tot"]
         fig.add_trace(go.Scatter3d(
             x=[sol["vp_vs"]], y=[sol["po"]], z=[zopt], mode="markers",
             name="constrained optimum",
@@ -74,10 +97,16 @@ fig.update_layout(scene=dict(zaxis=dict(
 style_scene(fig, height=660)
 st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
-if is_rth:
-    st.caption("Resistance surface - the design objective. Lowest values sit toward high Vp:Vs and "
-               "low porosity. Drag to rotate; the floor shows projected contours.")
+if mode == "rth":
+    st.caption("Resistance surface - the design objective. Lowest values sit toward high "
+               "Vp:Vs and low porosity. Drag to rotate; the floor shows projected contours.")
+elif mode == "ptot":
+    st.caption("Pressure-drop surface with the red constraint plane. Wherever the surface "
+               "rises above the plane the design is infeasible; the plane-surface "
+               "intersection is the feasibility boundary seen in 2-D on the Optimise page.")
 else:
-    st.caption("Pressure-drop surface with the red constraint plane. Wherever the surface rises above "
-               "the plane the design is infeasible; the plane-surface intersection is the feasibility "
-               "boundary you see in 2-D on the Optimise page.")
+    st.caption("GPR predictive standard deviation of the thermal resistance. Valleys sit on "
+               "the 49 FEM samples (the model is pinned there); ridges between and beyond "
+               "samples mark where predictions are least certain. Peaks inside the feasible "
+               "region are the best candidate locations for the NEXT FEM simulation, and a "
+               "high \u03c3 at the optimum warns that the optimum itself is uncertain.")

@@ -13,12 +13,18 @@ the exact surrogate selected by leave-one-out cross-validation in the offline pi
 | `vp_vs` - Vp/Vs wick volume ratio ∈ [0.05, 0.95] | `r_th` - thermal resistance (K/W), minimise |
 | `po` - porosity ε ∈ [0.40, 0.77] | `p_tot` - total pressure drop (Pa), constrained ≤ 4200 |
 
+## Fixed physical parameters
+
+Equivalent thermal conductivity uses Q = 40 W, A_c = 9.31e-6 m^2, L_eff = 0.14 m:
+k_eq = L_eff / (A_c * R_th).
+
 ## Pages
 
 - **Predict** - forward prediction with a ±kσ predictive interval (linear for R_th,
   asymmetric log-space band for ΔP_tot) and a domain-of-validity guard.
-- **Optimise** - constrained `min R_th s.t. ΔP_tot ≤ limit` via multi-start SLSQP, plus an
-  ε-constraint Pareto front (the constraint's shadow price).
+- **Optimise** - constrained `min R_th s.t. ΔP_tot ≤ limit` via a user-selectable solver:
+  multi-start SLSQP or a step-defined grid search (range fixed to the data bounds; the user
+  sets the lattice spacing, default Δ(Vp:Vs)=0.05, Δε=0.01), plus an ε-constraint Pareto front.
 - **Inverse Design** - the full region of designs meeting user targets on both outputs.
 - **Robust Optimum** - risk-aware design: minimise `R_th + κ·σ(R_th)` under a chance
   constraint on ΔP_tot.
