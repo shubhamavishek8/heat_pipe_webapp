@@ -144,21 +144,43 @@ def inject_css():
           [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] *
           {{ color: {MUTED} !important; }}
 
-          /* widgets: inputs, selects */
-          [data-baseweb="input"], [data-baseweb="select"] > div
+          /* ---------- widgets: number/text inputs (white field, dark text) -- */
+          .stApp [data-baseweb="input"], .stApp [data-baseweb="base-input"],
+          .stApp [data-baseweb="input"] > div, .stApp [data-baseweb="select"] > div
           {{ background-color: #ffffff !important; border-color: #c9d2de !important; }}
-          [data-baseweb="input"] input, [data-baseweb="select"] *
-          {{ color: {TEXT} !important; }}
+          .stApp [data-baseweb="input"] input,
+          .stApp input[type="number"], .stApp input[type="text"]
+          {{ background-color: #ffffff !important; color: {TEXT} !important;
+             -webkit-text-fill-color: {TEXT} !important; caret-color: {TEXT}; }}
+          .stApp [data-baseweb="select"] * {{ color: {TEXT} !important; }}
           [data-testid="stNumberInput"] button
-          {{ background-color: #eef2f8 !important; color: {TEXT} !important; }}
+          {{ background-color: #eef2f8 !important; color: {TEXT} !important;
+             border: 1px solid #c9d2de !important; }}
+          [data-testid="stNumberInput"] button svg {{ fill: {TEXT} !important; }}
 
-          /* sliders: thumb value, min/max ticks readable */
-          [data-testid="stSliderThumbValue"] {{ color: {C_ACCENT} !important; }}
-          [data-testid="stTickBar"] * {{ color: {MUTED} !important; }}
+          /* ---------- sliders: thumb value + min/max ticks, in TNR --------- */
+          [data-testid="stSliderThumbValue"]
+          {{ color: {C_ACCENT} !important; font-family: {FONT_TNR} !important; }}
+          [data-testid="stTickBar"] *
+          {{ color: #44505f !important; font-family: {FONT_TNR} !important; }}
 
-          /* radio / checkbox text */
-          [data-testid="stRadio"] label p, [data-testid="stCheckbox"] label p
-          {{ color: {TEXT} !important; }}
+          /* ---------- radio buttons: visible circles, TNR option text ------ */
+          [data-baseweb="radio"] > div:first-child
+          {{ background-color: #ffffff !important;
+             border: 2px solid #8b97a6 !important; }}
+          [data-testid="stRadio"] label p
+          {{ color: {TEXT} !important; font-family: {FONT_TNR} !important;
+             font-size: 1.0rem; }}
+
+          /* ---------- checkboxes: white unchecked, accent checked ---------- */
+          [data-baseweb="checkbox"] > span:first-of-type
+          {{ background-color: #ffffff !important;
+             border: 2px solid #8b97a6 !important; }}
+          [data-baseweb="checkbox"][aria-checked="true"] > span:first-of-type,
+          [data-baseweb="checkbox"] input:checked + span
+          {{ background-color: {C_ACCENT} !important;
+             border-color: {C_ACCENT} !important; }}
+          [data-testid="stCheckbox"] label p {{ color: {TEXT} !important; }}
 
           /* code chips */
           code {{ background-color: #eef2f8 !important; color: #b02a50 !important; }}

@@ -55,7 +55,8 @@ with c1:
         f"- **Predict** - forward prediction with uncertainty bands, a domain guard, and {SYM['k_eq']}\n"
         f"- **Optimise** - constrained min-{SYM['r_th']} (SLSQP) + {SYM['r_th']}/{SYM['p_tot']} trade-off front\n"
         "- **Tolerance Analysis** - manufacturing-tolerance propagation & yield\n"
-        "- **3D Insight** - interactive response surface with the constraint plane",
+        "- **3D Insight** - response surfaces and the model-uncertainty surface\n"
+        f"- **Next Experiment** - \u03c3 map with suggested locations for the next FEM run",
         unsafe_allow_html=True,
     )
 
