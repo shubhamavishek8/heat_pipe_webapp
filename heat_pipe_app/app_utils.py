@@ -164,37 +164,19 @@ def inject_css():
           [data-testid="stTickBar"] *
           {{ color: #44505f !important; font-family: {FONT_TNR} !important; }}
 
-          /* ---------- radio: white circle for both, BLUE ring+dot when selected */
-          [data-baseweb="radio"] input:not(:checked) + div,
-          [data-baseweb="radio"] input:not(:checked) ~ div:first-of-type
-          {{ background-color: #ffffff !important; border: 2px solid #8b97a6 !important; }}
-          [data-baseweb="radio"] input:checked + div,
-          [data-baseweb="radio"] input:checked ~ div:first-of-type
-          {{ background-color: #ffffff !important;
-             border: 2px solid {C_PRIMARY} !important; }}
-          /* inner dot */
-          [data-baseweb="radio"] input:checked + div > div
-          {{ background-color: {C_PRIMARY} !important; }}
-          [data-baseweb="radio"] input:not(:checked) + div > div
-          {{ background-color: transparent !important; }}
-          /* selected option text: blue + bold so the choice is unmistakable */
+          /* ---------- radio & checkbox: rely on Streamlit's native rendering --
+             (selected = theme red, unselected = white + thin border, NO label box).
+             We only ensure the label TEXT is dark/legible and never draw a box
+             around it - the earlier custom indicator CSS was wrongly boxing labels. */
+          [data-testid="stRadio"] label, [data-testid="stCheckbox"] label
+          {{ background: transparent !important; border: none !important;
+             box-shadow: none !important; }}
           [data-testid="stRadio"] label p
           {{ color: {TEXT} !important; font-family: {FONT_TNR} !important; font-size: 1.0rem; }}
-          [data-testid="stRadio"] label:has(input:checked) p
-          {{ color: {C_PRIMARY} !important; font-weight: 700 !important; }}
-
-          /* ---------- checkbox: white unchecked, BLUE fill + white tick checked */
-          [data-baseweb="checkbox"] input:not(:checked) ~ span:first-of-type,
-          [data-baseweb="checkbox"] input:not(:checked) + span
-          {{ background-color: #ffffff !important; border: 2px solid #8b97a6 !important; }}
-          [data-baseweb="checkbox"] input:checked ~ span:first-of-type,
-          [data-baseweb="checkbox"] input:checked + span
-          {{ background-color: {C_PRIMARY} !important; border-color: {C_PRIMARY} !important; }}
-          [data-baseweb="checkbox"] span:first-of-type svg,
-          [data-baseweb="checkbox"] span:first-of-type path {{ fill: #ffffff !important; }}
           [data-testid="stCheckbox"] label p {{ color: {TEXT} !important; }}
-          [data-testid="stCheckbox"] label:has(input:checked) p
-          {{ color: {C_PRIMARY} !important; font-weight: 600 !important; }}
+          /* unchecked box: ensure a clean thin border, no fill (no recolor of label) */
+          [data-baseweb="checkbox"] > span:first-child
+          {{ border-color: #333333 !important; }}
 
           /* code chips */
           code {{ background-color: #eef2f8 !important; color: #b02a50 !important; }}
@@ -308,14 +290,13 @@ def synced_input(label_html_str, lo, hi, default, step, key, fmt="%.3f", num_ste
 def input_sliders(default_vp=0.5, default_po=0.6, key_prefix=""):
     """The two design-variable controls: synced slider + direct-input box.
 
-    Uses 0.001 step / 4-decimal display so a user can reproduce the optimiser's
-    reported design exactly (it reports 4 decimals, e.g. 0.4287)."""
+    Three-decimal display / 0.001 step for Vp:Vs and porosity, on every page."""
     lo_vp, hi_vp = core.BOUNDS["vp_vs"]
     lo_po, hi_po = core.BOUNDS["po"]
     vp = synced_input(SYM["vp_vs"] + "&nbsp;&nbsp;(wick volume ratio)",
-                      lo_vp, hi_vp, default_vp, 0.001, f"{key_prefix}vp", fmt="%.4f")
+                      lo_vp, hi_vp, default_vp, 0.001, f"{key_prefix}vp", fmt="%.3f")
     po = synced_input(SYM["po"] + "&nbsp;&nbsp;(porosity)",
-                      lo_po, hi_po, default_po, 0.001, f"{key_prefix}po", fmt="%.4f")
+                      lo_po, hi_po, default_po, 0.001, f"{key_prefix}po", fmt="%.3f")
     return vp, po
 
 

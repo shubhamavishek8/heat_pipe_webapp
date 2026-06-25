@@ -117,10 +117,12 @@ def discover_artifacts():
         raise FileNotFoundError(
             f"Missing artifact(s) in '{ARTIFACT_DIR}': {', '.join(missing)}. "
             f"Expected a manifest JSON, a surrogate .pkl, and scaler_X*/scaler_y* .pkl.")
-    # Optional dataset CSV - lets the app recover training points / bounds / n for
-    # ANY model type (not just a GPR that exposes X_train_).
-    csv_path = _glob1("*data*.csv", "*raw*.csv", "*dataset*.csv", "*.csv")
-    return model_path, sx_path, sy_path, manifest_path, csv_path
+    # Dataset file (e.g. Raw_Data13.csv / .xlsx) - authoritative source for the
+    # design space, sample count and FEM-point overlays for ANY model type.
+    data_path = _glob1("*raw*data*.csv", "*raw*data*.xlsx", "*data*.csv", "*data*.xlsx",
+                       "*raw*.csv", "*raw*.xlsx", "*dataset*.csv", "*dataset*.xlsx",
+                       "*.csv", "*.xlsx")
+    return model_path, sx_path, sy_path, manifest_path, data_path
 
 
 # --------------------------------------------------------------------------- #
@@ -174,23 +176,23 @@ class Assets:
         except Exception:
             self.supports_std = False
 
-        # ---- training data: CSV -> GPR internals -> manifest -----------------
+        # ---- training data: dataset file -> GPR internals -> manifest --------
         self.X_train, self.y_train, self.data_source = self._load_training_data(csv_path)
         self.n = int(self.X_train.shape[0]) if self.X_train is not None \
             else int(self.manifest.get("n_samples", 0)) or None
 
-        # ---- design-space bounds: manifest -> data -> error ------------------
+        # ---- design-space bounds: DATA FILE first (Raw_Data13), then manifest -
         mb = self.manifest.get("bounds")
-        if isinstance(mb, dict) and all(k in mb for k in ("vp_vs", "po")):
-            BOUNDS = {k: (float(mb[k][0]), float(mb[k][1])) for k in ("vp_vs", "po")}
-        elif self.X_train is not None:
+        if self.X_train is not None:
             BOUNDS = {"vp_vs": (float(self.X_train[:, 0].min()), float(self.X_train[:, 0].max())),
                       "po":    (float(self.X_train[:, 1].min()), float(self.X_train[:, 1].max()))}
+        elif isinstance(mb, dict) and all(k in mb for k in ("vp_vs", "po")):
+            BOUNDS = {k: (float(mb[k][0]), float(mb[k][1])) for k in ("vp_vs", "po")}
         else:
             raise RuntimeError(
-                "Could not determine design-space bounds. Provide a dataset CSV in "
-                "artifacts/, deploy a Gaussian Process (exposes X_train_), or add a "
-                "'bounds' field to the manifest.")
+                "Could not determine design-space bounds. Put the dataset file (e.g. "
+                "Raw_Data13.csv or .xlsx) in artifacts/, deploy a Gaussian Process "
+                "(exposes X_train_), or add a 'bounds' field to the manifest.")
         LB = np.array([BOUNDS["vp_vs"][0], BOUNDS["po"][0]])
         UB = np.array([BOUNDS["vp_vs"][1], BOUNDS["po"][1]])
         self.bounds, self.LB, self.UB = BOUNDS, LB, UB
@@ -212,16 +214,15 @@ class Assets:
                 self._tri = None
 
     # ---- training-data loader -------------------------------------------- #
-    def _load_training_data(self, csv_path):
-        """Return (X_train, y_train, source_str) in ORIGINAL units, or (None, None, 'none')."""
-        # 1) CSV (model-agnostic). Columns picked by manifest names, then canonical aliases.
-        if csv_path and os.path.exists(csv_path):
+    def _load_training_data(self, data_path):
+        """Return (X_train, y_train, source_str) in ORIGINAL units, or (None, None, 'none').
+
+        Reads the dataset file (Raw_Data13.csv or .xlsx). Columns are matched by
+        the manifest's input/output names, then canonical aliases, then position
+        (first two columns = inputs, next two = outputs)."""
+        if data_path and os.path.exists(data_path):
             try:
-                import csv as _csv
-                with open(csv_path, newline="") as fh:
-                    rows = list(_csv.reader(fh))
-                header = [h.strip().lower() for h in rows[0]]
-                data = np.array([[float(v) for v in r] for r in rows[1:] if r], dtype=float)
+                header, data = self._read_table(data_path)
 
                 def col(names):
                     for nm in names:
@@ -230,27 +231,50 @@ class Assets:
                     return None
                 in_names = [n.lower() for n in self.manifest.get("input_names", [])]
                 out_names = [n.lower() for n in self.manifest.get("output_names", [])]
-                ix0 = col(in_names[:1] or []) or col(["vp_vs", "vp:vs", "vpvs", "vp/vs"])
-                ix1 = col(in_names[1:2] or []) or col(["po", "porosity", "epsilon", "eps"])
-                oy0 = col(out_names[:1] or []) or col(["r_th", "rth", "thermal_resistance"])
-                oy1 = col(out_names[1:2] or []) or col(["p_tot", "ptot", "dp_tot", "pressure_drop"])
+                ix0 = col(in_names[:1] or []);  ix0 = ix0 if ix0 is not None else col(["vp_vs", "vp:vs", "vpvs", "vp/vs"])
+                ix1 = col(in_names[1:2] or []); ix1 = ix1 if ix1 is not None else col(["po", "porosity", "epsilon", "eps"])
+                oy0 = col(out_names[:1] or []); oy0 = oy0 if oy0 is not None else col(["r_th", "rth", "thermal_resistance"])
+                oy1 = col(out_names[1:2] or []); oy1 = oy1 if oy1 is not None else col(["p_tot", "ptot", "dp_tot", "pressure_drop", "delta_p"])
                 if None not in (ix0, ix1, oy0, oy1):
-                    X = data[:, [ix0, ix1]]
-                    Y = data[:, [oy0, oy1]]
+                    X = data[:, [ix0, ix1]]; Y = data[:, [oy0, oy1]]
                 else:                       # positional fallback: first 2 in, next 2 out
-                    X = data[:, :2]
-                    Y = data[:, 2:4]
-                return X, Y, "CSV"
+                    X = data[:, :2]; Y = data[:, 2:4]
+                src = "XLSX" if data_path.lower().endswith((".xlsx", ".xls")) else "CSV"
+                return X, Y, f"{src} ({os.path.basename(data_path)})"
             except Exception:
                 pass
-        # 2) Gaussian Process exposes its own training data (scaled-log).
+        # Gaussian Process exposes its own training data (scaled-log).
         if hasattr(self.model, "X_train_") and hasattr(self.model, "y_train_"):
             X = self.scaler_X.inverse_transform(self.model.X_train_)
             y = self.scaler_y.inverse_transform(self.model.y_train_).copy()
             y[:, LOG_TRANSFORM_COL] = np.expm1(y[:, LOG_TRANSFORM_COL])
             return X, y, "model.X_train_"
-        # 3) nothing
         return None, None, "none"
+
+    @staticmethod
+    def _read_table(path):
+        """Read a CSV or XLSX into (header_lowercased_list, float_ndarray)."""
+        if path.lower().endswith((".xlsx", ".xls")):
+            try:
+                import pandas as pd
+                df = pd.read_excel(path)
+            except Exception:
+                import openpyxl
+                wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+                ws = wb.active
+                rows = [[c.value for c in r] for r in ws.iter_rows()]
+                import pandas as pd
+                df = pd.DataFrame(rows[1:], columns=rows[0])
+            header = [str(h).strip().lower() for h in df.columns]
+            data = df.to_numpy(dtype=float)
+            return header, data
+        # CSV
+        import csv as _csv
+        with open(path, newline="") as fh:
+            rows = [r for r in _csv.reader(fh) if r]
+        header = [h.strip().lower() for h in rows[0]]
+        data = np.array([[float(v) for v in r] for r in rows[1:]], dtype=float)
+        return header, data
 
     # -- low-level prediction in SCALED space ------------------------------- #
     def _raw_predict(self, X_raw, return_std=False):

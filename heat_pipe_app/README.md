@@ -80,7 +80,7 @@ a model trained on a new dataset, you never need to upload anything anywhere:
    input/output schema, the derived design-space bounds and sample count, and a
    COMPATIBLE / NOT COMPATIBLE verdict.
 
-2. **Drop the new files** into `artifacts/` (a surrogate `.pkl`, `scaler_X*.pkl`,
+2. **Drop the new files** into `artifacts/` - the surrogate `.pkl`, the two scalers, the manifest JSON, AND the dataset file (e.g. `Raw_Data13.csv` or `Raw_Data13.xlsx`). The dataset file is the authoritative source for the design space, the sample count `n`, and the FEM-sample overlays everywhere in the app; columns are matched by name (Vp_Vs/po/R_th/P_tot, case-insensitive) or position. Filenames are auto-discovered; the model file is read from the manifest's `file` field.
    `scaler_y*.pkl`, and the manifest JSON). Filenames are auto-discovered; the
    model file is read from the manifest's `file` field when present.
 

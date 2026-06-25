@@ -18,3 +18,4 @@ scipy==1.14.1
 pandas==2.2.3
 plotly==5.24.1
 joblib==1.4.2
+openpyxl
