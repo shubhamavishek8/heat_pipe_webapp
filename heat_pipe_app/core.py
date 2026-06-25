@@ -117,7 +117,10 @@ def discover_artifacts():
         raise FileNotFoundError(
             f"Missing artifact(s) in '{ARTIFACT_DIR}': {', '.join(missing)}. "
             f"Expected a manifest JSON, a surrogate .pkl, and scaler_X*/scaler_y* .pkl.")
-    return model_path, sx_path, sy_path, manifest_path
+    # Optional dataset CSV - lets the app recover training points / bounds / n for
+    # ANY model type (not just a GPR that exposes X_train_).
+    csv_path = _glob1("*data*.csv", "*raw*.csv", "*dataset*.csv", "*.csv")
+    return model_path, sx_path, sy_path, manifest_path, csv_path
 
 
 # --------------------------------------------------------------------------- #
@@ -125,14 +128,24 @@ def discover_artifacts():
 # --------------------------------------------------------------------------- #
 class Assets:
     """Loads the surrogate, scalers and manifest, then DERIVES everything that
-    depends on the dataset (design-space bounds, sample count) directly from the
-    model's own training data - so a newly trained GPR can be dropped into
-    artifacts/ with no code edits."""
+    depends on the dataset (design-space bounds, sample count) automatically.
+
+    Model-agnostic: ANY scikit-learn regressor works for point predictions and
+    every optimiser. Predictive-uncertainty features (bands, sigma maps, the
+    Next-Experiment page) light up only when the surrogate supports
+    predict(return_std=True) - i.e. a Gaussian Process - and otherwise degrade
+    gracefully with a clear in-app note rather than crashing.
+
+    Training-data source priority (for overlays / bounds / sample count):
+        1. a dataset CSV in artifacts/      (works for every model type)
+        2. the model's own X_train_/y_train_ (Gaussian Process only)
+        3. manifest 'bounds' + 'n_samples'  (no overlays, but the app still runs)
+    """
 
     def __init__(self):
         global BOUNDS, LB, UB
 
-        model_path, sx_path, sy_path, manifest_path = discover_artifacts()
+        model_path, sx_path, sy_path, manifest_path, csv_path = discover_artifacts()
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")   # tolerate sklearn version mismatch warning
             self.model    = joblib.load(model_path)
@@ -142,60 +155,102 @@ class Assets:
             self.manifest = json.load(fh)
 
         self.model_name = self.manifest.get("best_model_name", type(self.model).__name__)
+        self.model_class = type(self.model).__name__
         self.sklearn_version = getattr(self.model, "_sklearn_version", None)
 
-        # ---- require a Gaussian Process (uncertainty, overlays, hull need it) -
-        if not (hasattr(self.model, "X_train_") and hasattr(self.model, "y_train_")):
-            raise RuntimeError(
-                f"The deployed surrogate must expose training data (X_train_/y_train_), "
-                f"i.e. a fitted GaussianProcessRegressor. Loaded model is "
-                f"'{type(self.model).__name__}'. Re-export the GPR surrogate from the "
-                f"pipeline - the app's predictive bands, domain guard, sigma maps and "
-                f"sample overlays all depend on it.")
-
-        X_train_raw = self.scaler_X.inverse_transform(self.model.X_train_)
-        if X_train_raw.shape[1] != 2 or np.asarray(self.model.y_train_).shape[1] != 2:
+        # ---- validate 2-in / 2-out via an actual prediction ------------------
+        n_in = int(getattr(self.scaler_X, "n_features_in_", 2))
+        probe = np.zeros((1, n_in))           # a valid point in SCALED input space
+        y_probe = np.atleast_2d(self.model.predict(probe))
+        if n_in != 2 or y_probe.shape[1] != 2:
             raise ValueError(
                 f"This app supports exactly 2 inputs and 2 outputs; the loaded model has "
-                f"{X_train_raw.shape[1]} inputs / {np.asarray(self.model.y_train_).shape[1]} outputs.")
+                f"{n_in} inputs / {y_probe.shape[1]} outputs.")
 
+        # ---- predictive-uncertainty capability (no crash if unsupported) -----
+        self.supports_std = True
         try:
-            self.model.predict(self.scaler_X.transform(X_train_raw[:1]), return_std=True)
-        except TypeError:
-            raise RuntimeError(
-                f"The deployed surrogate does not support predict(return_std=True); a "
-                f"Gaussian Process is required. Loaded model is '{type(self.model).__name__}'.")
+            self.model.predict(probe, return_std=True)
+        except Exception:
+            self.supports_std = False
 
-        # ---- recover training data, sample count -----------------------------
-        self.X_train = X_train_raw
-        y_log = self.scaler_y.inverse_transform(self.model.y_train_)
-        y_orig = y_log.copy()
-        y_orig[:, LOG_TRANSFORM_COL] = np.expm1(y_orig[:, LOG_TRANSFORM_COL])
-        self.y_train = y_orig
-        self.n = int(self.X_train.shape[0])
+        # ---- training data: CSV -> GPR internals -> manifest -----------------
+        self.X_train, self.y_train, self.data_source = self._load_training_data(csv_path)
+        self.n = int(self.X_train.shape[0]) if self.X_train is not None \
+            else int(self.manifest.get("n_samples", 0)) or None
 
-        # ---- design-space bounds: manifest override, else data min/max -------
+        # ---- design-space bounds: manifest -> data -> error ------------------
         mb = self.manifest.get("bounds")
         if isinstance(mb, dict) and all(k in mb for k in ("vp_vs", "po")):
             BOUNDS = {k: (float(mb[k][0]), float(mb[k][1])) for k in ("vp_vs", "po")}
-        else:
+        elif self.X_train is not None:
             BOUNDS = {"vp_vs": (float(self.X_train[:, 0].min()), float(self.X_train[:, 0].max())),
                       "po":    (float(self.X_train[:, 1].min()), float(self.X_train[:, 1].max()))}
+        else:
+            raise RuntimeError(
+                "Could not determine design-space bounds. Provide a dataset CSV in "
+                "artifacts/, deploy a Gaussian Process (exposes X_train_), or add a "
+                "'bounds' field to the manifest.")
         LB = np.array([BOUNDS["vp_vs"][0], BOUNDS["po"][0]])
         UB = np.array([BOUNDS["vp_vs"][1], BOUNDS["po"][1]])
         self.bounds, self.LB, self.UB = BOUNDS, LB, UB
 
-        # ---- reference sigma distribution + convex hull ----------------------
-        gx = np.linspace(*BOUNDS["vp_vs"], 40)
-        gy = np.linspace(*BOUNDS["po"], 40)
-        GX, GY = np.meshgrid(gx, gy)
-        grid = np.column_stack([GX.ravel(), GY.ravel()])
-        _, sig_scaled = self._raw_predict(grid, return_std=True)
-        self._sigma_ref = np.sort(sig_scaled)        # ascending
-        try:
-            self._tri = Delaunay(self.X_train)
-        except Exception:
-            self._tri = None
+        # ---- reference sigma distribution + convex hull (only if available) --
+        self._sigma_ref = None
+        if self.supports_std:
+            gx = np.linspace(*BOUNDS["vp_vs"], 40)
+            gy = np.linspace(*BOUNDS["po"], 40)
+            GX, GY = np.meshgrid(gx, gy)
+            grid = np.column_stack([GX.ravel(), GY.ravel()])
+            _, sig_scaled = self._raw_predict(grid, return_std=True)
+            self._sigma_ref = np.sort(sig_scaled)
+        self._tri = None
+        if self.X_train is not None:
+            try:
+                self._tri = Delaunay(self.X_train)
+            except Exception:
+                self._tri = None
+
+    # ---- training-data loader -------------------------------------------- #
+    def _load_training_data(self, csv_path):
+        """Return (X_train, y_train, source_str) in ORIGINAL units, or (None, None, 'none')."""
+        # 1) CSV (model-agnostic). Columns picked by manifest names, then canonical aliases.
+        if csv_path and os.path.exists(csv_path):
+            try:
+                import csv as _csv
+                with open(csv_path, newline="") as fh:
+                    rows = list(_csv.reader(fh))
+                header = [h.strip().lower() for h in rows[0]]
+                data = np.array([[float(v) for v in r] for r in rows[1:] if r], dtype=float)
+
+                def col(names):
+                    for nm in names:
+                        if nm in header:
+                            return header.index(nm)
+                    return None
+                in_names = [n.lower() for n in self.manifest.get("input_names", [])]
+                out_names = [n.lower() for n in self.manifest.get("output_names", [])]
+                ix0 = col(in_names[:1] or []) or col(["vp_vs", "vp:vs", "vpvs", "vp/vs"])
+                ix1 = col(in_names[1:2] or []) or col(["po", "porosity", "epsilon", "eps"])
+                oy0 = col(out_names[:1] or []) or col(["r_th", "rth", "thermal_resistance"])
+                oy1 = col(out_names[1:2] or []) or col(["p_tot", "ptot", "dp_tot", "pressure_drop"])
+                if None not in (ix0, ix1, oy0, oy1):
+                    X = data[:, [ix0, ix1]]
+                    Y = data[:, [oy0, oy1]]
+                else:                       # positional fallback: first 2 in, next 2 out
+                    X = data[:, :2]
+                    Y = data[:, 2:4]
+                return X, Y, "CSV"
+            except Exception:
+                pass
+        # 2) Gaussian Process exposes its own training data (scaled-log).
+        if hasattr(self.model, "X_train_") and hasattr(self.model, "y_train_"):
+            X = self.scaler_X.inverse_transform(self.model.X_train_)
+            y = self.scaler_y.inverse_transform(self.model.y_train_).copy()
+            y[:, LOG_TRANSFORM_COL] = np.expm1(y[:, LOG_TRANSFORM_COL])
+            return X, y, "model.X_train_"
+        # 3) nothing
+        return None, None, "none"
 
     # -- low-level prediction in SCALED space ------------------------------- #
     def _raw_predict(self, X_raw, return_std=False):
@@ -232,10 +287,22 @@ def predict_with_uncertainty(assets: Assets, X_raw, k: float = 2.0):
     Returns dict with arrays of shape (n,):
         r_th, r_th_sigma, r_th_lo, r_th_hi,
         p_tot, p_tot_lo, p_tot_hi, sigma_scaled
+
+    If the surrogate does not support predictive std (not a Gaussian Process),
+    sigma is zero and the bands collapse to the mean; callers should check
+    assets.supports_std before presenting an interval.
     """
     X_raw = np.atleast_2d(np.asarray(X_raw, dtype=float))
-    y_s, sig_scaled = assets._raw_predict(X_raw, return_std=True)
     sc = assets.scaler_y
+    if not assets.supports_std:
+        y_s = assets._raw_predict(X_raw, return_std=False)
+        rth_mean = y_s[:, 0] * sc.scale_[0] + sc.mean_[0]
+        ptot_mean = np.expm1(y_s[:, 1] * sc.scale_[1] + sc.mean_[1])
+        z = np.zeros_like(rth_mean)
+        return {"r_th": rth_mean, "r_th_sigma": z, "r_th_lo": rth_mean, "r_th_hi": rth_mean,
+                "p_tot": ptot_mean, "p_tot_lo": ptot_mean, "p_tot_hi": ptot_mean,
+                "sigma_scaled": z}
+    y_s, sig_scaled = assets._raw_predict(X_raw, return_std=True)
 
     # r_th (linear)
     rth_mean  = y_s[:, 0] * sc.scale_[0] + sc.mean_[0]
@@ -266,7 +333,7 @@ def domain_status(assets: Assets, x):
 
     Returns dict:
         in_box   : within axis-aligned design bounds
-        in_hull  : inside the convex hull of the 49 training points
+        in_hull  : inside the convex hull of the training points
         sigma    : scaled predictive std at the point
         pct      : percentile of that sigma vs the in-domain reference distribution
         level    : 'high' | 'moderate' | 'low'  (traffic light)
@@ -278,17 +345,21 @@ def domain_status(assets: Assets, x):
     else:
         in_hull = in_box
 
-    _, sig = assets._raw_predict(x, return_std=True)
-    sig = float(sig[0])
-    ref = assets._sigma_ref
-    pct = float(np.searchsorted(ref, sig) / len(ref) * 100.0)
-
-    if (not in_box) or pct >= 99.0:
-        level = "low"
-    elif (not in_hull) or pct >= 90.0:
-        level = "moderate"
+    # Soft signal from GPR predictive std, when available; else geometry only.
+    if assets.supports_std and assets._sigma_ref is not None:
+        _, sig = assets._raw_predict(x, return_std=True)
+        sig = float(sig[0])
+        ref = assets._sigma_ref
+        pct = float(np.searchsorted(ref, sig) / len(ref) * 100.0)
+        if (not in_box) or pct >= 99.0:
+            level = "low"
+        elif (not in_hull) or pct >= 90.0:
+            level = "moderate"
+        else:
+            level = "high"
     else:
-        level = "high"
+        sig, pct = float("nan"), float("nan")
+        level = "high" if in_hull else ("moderate" if in_box else "low")
 
     return {"in_box": in_box, "in_hull": in_hull, "sigma": sig, "pct": pct, "level": level}
 

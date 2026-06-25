@@ -1,7 +1,7 @@
 """Page 5 - Next Experiment: 2D map of the GPR predictive uncertainty with
 suggested locations for the next FEM simulation(s) - active-learning style.
 
-Rationale: with n = 49 samples, the single most valuable thing a new FEM run
+Rationale: with a small sample, the single most valuable thing a new FEM run
 can do is shrink the surrogate's uncertainty where it matters. The candidates
 below are the feasible designs of maximum predictive std, picked greedily with
 an exclusion radius so the suggestions are spread out rather than clustered on
@@ -19,6 +19,16 @@ from app_utils import (get_assets, cached_grid, cached_sigma_grid, inject_css,
 st.set_page_config(page_title="Next Experiment", page_icon="\U0001f321\ufe0f", layout="wide")
 inject_css()
 A = get_assets()
+
+if not A.supports_std:
+    page_header("Next Experiment (Active Learning)",
+                "This page selects the next FEM run from the surrogate's predictive "
+                "uncertainty.")
+    st.info(f"The deployed surrogate ({A.model_name}) does not provide predictive "
+            f"uncertainty, so an active-learning suggestion cannot be computed. This "
+            f"page becomes available when the best model is a Gaussian Process "
+            f"(which exposes predict(return_std=True)). All other pages work normally.")
+    st.stop()
 
 page_header("Next Experiment (Active Learning)",
             f"Where should the NEXT FEM simulation go? The map shows the GPR predictive "
@@ -110,6 +120,6 @@ with right:
                         line=dict(width=1.5, color="#1a2230"))))
     fig.update_layout(xaxis_title=AX["vp_vs"], yaxis_title=AX["po"])
     st.plotly_chart(base_layout(fig, height=560), use_container_width=True, config=PLOTLY_CONFIG)
-    st.caption("Bright ridges = least-trusted regions (far from the 49 samples). Valleys sit "
+    st.caption(f"Bright ridges = least-trusted regions (far from the {A.n} samples). Valleys sit "
                "on the FEM points. Red line = pressure-drop feasibility boundary; gold stars "
                "= suggested next simulations, numbered by priority.")

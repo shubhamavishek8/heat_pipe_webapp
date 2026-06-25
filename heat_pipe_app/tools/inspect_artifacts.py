@@ -7,14 +7,13 @@ Usage:
     python tools/inspect_artifacts.py            # inspects ../artifacts
     python tools/inspect_artifacts.py /path/to/artifacts
 
-It reports the discovered files, model type, the scikit-learn version the model
-was pickled with (so you can pin requirements.txt correctly), the input/output
-shapes, whether predictive std is available, the derived design-space bounds and
-sample count, and a final COMPATIBLE / NOT COMPATIBLE verdict. Nothing leaves
-your machine.
+ANY scikit-learn regressor is compatible for prediction and optimisation;
+uncertainty features simply switch off for non-Gaussian-Process models. Nothing
+leaves your machine.
 """
 import os
 import sys
+import csv as _csv
 import json
 import glob
 import warnings
@@ -32,9 +31,9 @@ def glob1(d, *patterns):
 
 
 def main(artifact_dir):
-    print("=" * 70)
+    print("=" * 72)
     print("ARTIFACT INSPECTION  -  ", os.path.abspath(artifact_dir))
-    print("=" * 70)
+    print("=" * 72)
 
     manifest_path = glob1(artifact_dir, "*manifest*.json", "*.json")
     model_path = None
@@ -51,13 +50,14 @@ def main(artifact_dir):
         model_path = glob1(artifact_dir, "best_surrogate*.pkl", "*surrogate*.pkl", "model*.pkl")
     sx_path = glob1(artifact_dir, "scaler_X*.pkl", "scaler_x*.pkl", "*scalerX*.pkl", "x_scaler*.pkl")
     sy_path = glob1(artifact_dir, "scaler_y*.pkl", "*scalerY*.pkl", "y_scaler*.pkl")
+    csv_path = glob1(artifact_dir, "*data*.csv", "*raw*.csv", "*dataset*.csv", "*.csv")
 
     print("\n[1] Discovered files")
     for name, p in [("manifest", manifest_path), ("model", model_path),
-                    ("scaler_X", sx_path), ("scaler_y", sy_path)]:
-        print(f"    {name:9s}: {os.path.basename(p) if p else '*** MISSING ***'}")
+                    ("scaler_X", sx_path), ("scaler_y", sy_path), ("dataset CSV", csv_path)]:
+        print(f"    {name:11s}: {os.path.basename(p) if p else '-- none --'}")
     if not all([manifest_path, model_path, sx_path, sy_path]):
-        print("\nVERDICT: NOT COMPATIBLE - one or more required files are missing.")
+        print("\nVERDICT: NOT COMPATIBLE - a required file (manifest/model/scalers) is missing.")
         return 1
 
     print("\n[2] Manifest")
@@ -80,58 +80,72 @@ def main(artifact_dir):
     pickled_ver = pickled_ver or getattr(model, "_sklearn_version", "unknown")
     import sklearn
     print("\n[3] Versions")
-    print(f"    model pickled with scikit-learn : {pickled_ver}")
-    print(f"    scikit-learn in THIS environment: {sklearn.__version__}")
-    print(f"    -> pin this line in requirements.txt:  scikit-learn=={pickled_ver}")
+    print(f"    best model (per manifest)        : {manifest.get('best_model_name', type(model).__name__)}")
+    print(f"    model class                      : {type(model).__name__}")
+    print(f"    model pickled with scikit-learn  : {pickled_ver}")
+    print(f"    scikit-learn in THIS environment : {sklearn.__version__}")
+    print(f"    -> pin in requirements.txt:  scikit-learn=={pickled_ver}")
 
-    print("\n[4] Model")
-    print(f"    type            : {type(model).__name__}")
-    has_train = hasattr(model, "X_train_") and hasattr(model, "y_train_")
-    print(f"    has X_train_/y_train_ (GPR): {has_train}")
-    supports_std = False
-    if has_train:
-        try:
-            Xr = sX.inverse_transform(model.X_train_)
-            model.predict(sX.transform(Xr[:1]), return_std=True)
-            supports_std = True
-        except TypeError:
-            supports_std = False
-        except Exception as e:
-            print("    ! predict(return_std=True) raised:", e)
-    print(f"    predict(return_std=True) works: {supports_std}")
-
-    if not has_train:
-        print("\nVERDICT: NOT COMPATIBLE - the model must be a fitted GaussianProcessRegressor "
-              "exposing X_train_/y_train_. Re-export the GPR surrogate.")
+    n_in = int(getattr(sX, "n_features_in_", 2))
+    try:
+        y_probe = np.atleast_2d(model.predict(np.zeros((1, n_in))))
+        n_out = y_probe.shape[1]
+    except Exception as e:
+        print("\n    ! model.predict failed:", e)
+        print("\nVERDICT: NOT COMPATIBLE - the model cannot predict on a 2-feature input.")
         return 1
 
-    Xr = sX.inverse_transform(model.X_train_)
-    yr = np.asarray(model.y_train_)
-    n_in, n_out = Xr.shape[1], yr.shape[1]
-    print("\n[5] Schema & data")
-    print(f"    inputs : {n_in}   outputs: {n_out}   samples (n): {Xr.shape[0]}")
+    try:
+        model.predict(np.zeros((1, n_in)), return_std=True)
+        supports_std = True
+    except Exception:
+        supports_std = False
+
+    print("\n[4] Model capability")
+    print(f"    inputs / outputs                 : {n_in} / {n_out}")
+    print(f"    predictive std (Gaussian Process): {supports_std}")
     if n_in != 2 or n_out != 2:
         print("\nVERDICT: NOT COMPATIBLE - the app supports exactly 2 inputs and 2 outputs.")
         return 1
 
-    # derived bounds (what the app will use)
-    print("\n[6] Derived design-space bounds (auto-used by the app)")
-    print(f"    vp_vs : [{Xr[:,0].min():.4f}, {Xr[:,0].max():.4f}]")
-    print(f"    po    : [{Xr[:,1].min():.4f}, {Xr[:,1].max():.4f}]")
-    # original-unit outputs (assumes col 1 = log1p p_tot, per the convention)
-    yo = sY.inverse_transform(yr).copy()
-    yo[:, 1] = np.expm1(yo[:, 1])
-    print("\n[7] Output ranges (col0 = r_th linear, col1 = p_tot via expm1)")
-    print(f"    r_th  : [{yo[:,0].min():.4f}, {yo[:,0].max():.4f}]")
-    print(f"    p_tot : [{yo[:,1].min():.1f}, {yo[:,1].max():.1f}]")
-    print(f"    (default pressure-drop constraint is 4200 Pa - confirm it sits in this range)")
+    src, X = "none", None
+    if csv_path:
+        try:
+            rows = list(_csv.reader(open(csv_path, newline="")))
+            data = np.array([[float(v) for v in r] for r in rows[1:] if r], dtype=float)
+            X = data[:, :2]; src = "CSV"
+        except Exception:
+            X = None
+    if X is None and hasattr(model, "X_train_"):
+        X = sX.inverse_transform(model.X_train_); src = "model.X_train_ (Gaussian Process)"
 
-    ok = supports_std and has_train and n_in == 2 and n_out == 2
-    print("\n" + "=" * 70)
-    print("VERDICT:", "COMPATIBLE - drop these into artifacts/ and the app self-configures."
-          if ok else "NOT COMPATIBLE - see notes above.")
-    print("=" * 70)
-    return 0 if ok else 1
+    print("\n[5] Training-data source & derived design space")
+    print(f"    source : {src}")
+    mb = manifest.get("bounds")
+    if X is not None:
+        print(f"    samples (n) : {X.shape[0]}")
+        print(f"    vp_vs bounds: [{X[:,0].min():.4f}, {X[:,0].max():.4f}]")
+        print(f"    po    bounds: [{X[:,1].min():.4f}, {X[:,1].max():.4f}]")
+    elif isinstance(mb, dict):
+        print(f"    bounds from manifest: {mb}  | n_samples: {manifest.get('n_samples','unknown')}")
+    else:
+        print("    -- no training data available --")
+
+    can_bounds = (X is not None) or isinstance(mb, dict)
+    print("\n" + "=" * 72)
+    if not can_bounds:
+        print("VERDICT: NOT COMPATIBLE - cannot determine design-space bounds.\n"
+              "  Add a dataset CSV to artifacts/, deploy a Gaussian Process (exposes\n"
+              "  X_train_), or add a 'bounds' field to the manifest.")
+        return 1
+    note = ("Full functionality (Gaussian Process: predictive bands, uncertainty surface, "
+            "Next-Experiment all active)." if supports_std else
+            "Prediction, optimisation and tolerance analysis active; uncertainty features OFF "
+            "for this model type.")
+    print("VERDICT: COMPATIBLE - drop these into artifacts/ and the app self-configures.")
+    print("  " + note)
+    print("=" * 72)
+    return 0
 
 
 if __name__ == "__main__":

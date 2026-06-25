@@ -164,23 +164,37 @@ def inject_css():
           [data-testid="stTickBar"] *
           {{ color: #44505f !important; font-family: {FONT_TNR} !important; }}
 
-          /* ---------- radio buttons: visible circles, TNR option text ------ */
-          [data-baseweb="radio"] > div:first-child
+          /* ---------- radio: white circle for both, BLUE ring+dot when selected */
+          [data-baseweb="radio"] input:not(:checked) + div,
+          [data-baseweb="radio"] input:not(:checked) ~ div:first-of-type
+          {{ background-color: #ffffff !important; border: 2px solid #8b97a6 !important; }}
+          [data-baseweb="radio"] input:checked + div,
+          [data-baseweb="radio"] input:checked ~ div:first-of-type
           {{ background-color: #ffffff !important;
-             border: 2px solid #8b97a6 !important; }}
+             border: 2px solid {C_PRIMARY} !important; }}
+          /* inner dot */
+          [data-baseweb="radio"] input:checked + div > div
+          {{ background-color: {C_PRIMARY} !important; }}
+          [data-baseweb="radio"] input:not(:checked) + div > div
+          {{ background-color: transparent !important; }}
+          /* selected option text: blue + bold so the choice is unmistakable */
           [data-testid="stRadio"] label p
-          {{ color: {TEXT} !important; font-family: {FONT_TNR} !important;
-             font-size: 1.0rem; }}
+          {{ color: {TEXT} !important; font-family: {FONT_TNR} !important; font-size: 1.0rem; }}
+          [data-testid="stRadio"] label:has(input:checked) p
+          {{ color: {C_PRIMARY} !important; font-weight: 700 !important; }}
 
-          /* ---------- checkboxes: white unchecked, accent checked ---------- */
-          [data-baseweb="checkbox"] > span:first-of-type
-          {{ background-color: #ffffff !important;
-             border: 2px solid #8b97a6 !important; }}
-          [data-baseweb="checkbox"][aria-checked="true"] > span:first-of-type,
+          /* ---------- checkbox: white unchecked, BLUE fill + white tick checked */
+          [data-baseweb="checkbox"] input:not(:checked) ~ span:first-of-type,
+          [data-baseweb="checkbox"] input:not(:checked) + span
+          {{ background-color: #ffffff !important; border: 2px solid #8b97a6 !important; }}
+          [data-baseweb="checkbox"] input:checked ~ span:first-of-type,
           [data-baseweb="checkbox"] input:checked + span
-          {{ background-color: {C_ACCENT} !important;
-             border-color: {C_ACCENT} !important; }}
+          {{ background-color: {C_PRIMARY} !important; border-color: {C_PRIMARY} !important; }}
+          [data-baseweb="checkbox"] span:first-of-type svg,
+          [data-baseweb="checkbox"] span:first-of-type path {{ fill: #ffffff !important; }}
           [data-testid="stCheckbox"] label p {{ color: {TEXT} !important; }}
+          [data-testid="stCheckbox"] label:has(input:checked) p
+          {{ color: {C_PRIMARY} !important; font-weight: 600 !important; }}
 
           /* code chips */
           code {{ background-color: #eef2f8 !important; color: #b02a50 !important; }}
@@ -248,19 +262,25 @@ def metric_card(label_html: str, value: str, sub: str = "", value_color: str = N
     st.markdown(html, unsafe_allow_html=True)
 
 
-def synced_input(label_html_str, lo, hi, default, step, key, fmt="%.3f"):
+def synced_input(label_html_str, lo, hi, default, step, key, fmt="%.3f", num_step=None):
     """A slider AND a number box bound to the same value.
 
-    - The slider shows its EXACT value (format=fmt matches the step
-      granularity, fixing the 'thumb label does not change' issue).
-    - The number box lets the user type a raw value directly; it is clipped to
-      the bounds. Whichever control moved last wins, via on_change callbacks.
+    - The slider shows its EXACT value (format=fmt matches the step granularity).
+    - The number box lets the user type a raw value directly (its own num_step,
+      e.g. 0.01 for two-decimal entry, independent of the slider's coarser step);
+      it is clipped to the bounds. Whichever control moved last wins.
     """
+    num_step = float(num_step if num_step is not None else step)
     skey, nkey = f"{key}_sl", f"{key}_nb"
     if skey not in st.session_state:
         st.session_state[skey] = float(default)
     if nkey not in st.session_state:
         st.session_state[nkey] = float(default)
+
+    def _snap(v):
+        # nearest slider-grid value, so programmatic slider sets stay valid
+        g = lo + round((v - lo) / float(step)) * float(step)
+        return float(min(max(g, lo), hi))
 
     def _from_slider():
         st.session_state[nkey] = st.session_state[skey]
@@ -268,7 +288,7 @@ def synced_input(label_html_str, lo, hi, default, step, key, fmt="%.3f"):
     def _from_number():
         v = float(np.clip(st.session_state[nkey], lo, hi))
         st.session_state[nkey] = v
-        st.session_state[skey] = v
+        st.session_state[skey] = _snap(v)
 
     if label_html_str:
         html_label(label_html_str)
@@ -279,19 +299,23 @@ def synced_input(label_html_str, lo, hi, default, step, key, fmt="%.3f"):
                   label_visibility="collapsed")
     with c2:
         st.number_input(f"{key} (direct input)", float(lo), float(hi),
-                        step=float(step), format=fmt, key=nkey,
+                        step=num_step, format=fmt, key=nkey,
                         on_change=_from_number, label_visibility="collapsed")
-    return float(st.session_state[skey])
+    # the number box holds the precise value the user sees/uses
+    return float(st.session_state[nkey])
 
 
 def input_sliders(default_vp=0.5, default_po=0.6, key_prefix=""):
-    """The two design-variable controls: synced slider + direct-input box."""
+    """The two design-variable controls: synced slider + direct-input box.
+
+    Uses 0.001 step / 4-decimal display so a user can reproduce the optimiser's
+    reported design exactly (it reports 4 decimals, e.g. 0.4287)."""
     lo_vp, hi_vp = core.BOUNDS["vp_vs"]
     lo_po, hi_po = core.BOUNDS["po"]
     vp = synced_input(SYM["vp_vs"] + "&nbsp;&nbsp;(wick volume ratio)",
-                      lo_vp, hi_vp, default_vp, 0.005, f"{key_prefix}vp")
+                      lo_vp, hi_vp, default_vp, 0.001, f"{key_prefix}vp", fmt="%.4f")
     po = synced_input(SYM["po"] + "&nbsp;&nbsp;(porosity)",
-                      lo_po, hi_po, default_po, 0.005, f"{key_prefix}po")
+                      lo_po, hi_po, default_po, 0.001, f"{key_prefix}po", fmt="%.4f")
     return vp, po
 
 
@@ -307,13 +331,15 @@ LEVEL_STYLE = {
 
 def domain_badge(status: dict):
     color, label, msg = LEVEL_STYLE[status["level"]]
+    pct = status.get("pct", float("nan"))
+    pct_txt = f"\u03c3-percentile {pct:.0f}, " if pct == pct else ""   # NaN-safe
+    hull_txt = "inside" if status["in_hull"] else "outside"
     st.markdown(
         f"<div class='domain-badge' style='background:{color}22;"
         f"border-left:5px solid {color}'>"
         f"<span style='color:{color}'>{label}</span><br>"
         f"<span style='color:{TEXT};font-weight:400'>{msg} "
-        f"(\u03c3-percentile {status['pct']:.0f}, "
-        f"{'inside' if status['in_hull'] else 'outside'} convex hull)</span></div>",
+        f"({pct_txt}{hull_txt} convex hull)</span></div>",
         unsafe_allow_html=True,
     )
 
@@ -387,6 +413,8 @@ def style_scene(fig: go.Figure, height=640):
 
 
 def add_training_points(fig: go.Figure, assets, marker_color=C_PRIMARY):
+    if getattr(assets, "X_train", None) is None:
+        return fig
     fig.add_trace(go.Scatter(
         x=assets.X_train[:, 0], y=assets.X_train[:, 1], mode="markers",
         marker=dict(size=6, color=marker_color, symbol="circle-open",

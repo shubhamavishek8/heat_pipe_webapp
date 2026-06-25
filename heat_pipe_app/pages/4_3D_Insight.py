@@ -20,7 +20,8 @@ page_header("3D Interactive Insight",
 
 ctrl = st.columns([1.4, 1, 1])
 with ctrl[0]:
-    which = st.radio("Surface", [U["r_th"], U["p_tot"], U["sigma"]],
+    _opts = [U["r_th"], U["p_tot"]] + ([U["sigma"]] if A.supports_std else [])
+    which = st.radio("Surface", _opts,
                      horizontal=True, label_visibility="collapsed")
 with ctrl[1]:
     ptot_max = st.number_input("Pressure-drop limit (Pa)",
@@ -106,7 +107,7 @@ elif mode == "ptot":
                "intersection is the feasibility boundary seen in 2-D on the Optimise page.")
 else:
     st.caption("GPR predictive standard deviation of the thermal resistance. Valleys sit on "
-               "the 49 FEM samples (the model is pinned there); ridges between and beyond "
+               f"the {A.n} FEM samples (the model is pinned there); ridges between and beyond "
                "samples mark where predictions are least certain. Peaks inside the feasible "
                "region are the best candidate locations for the NEXT FEM simulation, and a "
                "high \u03c3 at the optimum warns that the optimum itself is uncertain.")

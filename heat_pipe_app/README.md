@@ -91,7 +91,4 @@ a model trained on a new dataset, you never need to upload anything anywhere:
    from the model's training data; all pages, optimisers, sigma maps and the
    domain guard reconfigure automatically.
 
-**Requirement:** the production surrogate must be a fitted `GaussianProcessRegressor`
-(it must expose `X_train_`/`y_train_` and support `predict(return_std=True)`), with
-2 inputs and 2 outputs, the second output `log1p`-transformed. The app loads with a
-clear error if these are not met. The default pressure-drop constraint stays 4200 Pa.
+**Model-agnostic.** Any scikit-learn regressor (GPR, RandomForest, XGBoost, SVR, ...) works for prediction, optimisation and tolerance analysis. The manifest's `best_model_name`/`file` select which surrogate loads, and the app names it on the landing page. Predictive-uncertainty features (forecast bands, the uncertainty surface, the Next-Experiment page) activate only for a Gaussian Process (supports `predict(return_std=True)`) and otherwise switch off automatically with an in-app note. Training points/bounds/`n` come from a dataset CSV in `artifacts/` if present, else a GPR's `X_train_`, else a manifest `bounds`/`n_samples` field. Default pressure-drop constraint stays 4200 Pa.

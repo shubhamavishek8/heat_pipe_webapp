@@ -24,8 +24,11 @@ left, right = st.columns([1, 1.4], gap="large")
 with left:
     st.subheader("Design point")
     vp, po = input_sliders(0.5, 0.6, key_prefix="pred_")
-    k = st.select_slider("Predictive interval", options=[1, 2, 3], value=2,
-                         format_func=lambda z: f"\u00b1{z}\u03c3  (~{ {1:68,2:95,3:99.7}[z] }%)")
+    if A.supports_std:
+        k = st.select_slider("Predictive interval", options=[1, 2, 3], value=2,
+                             format_func=lambda z: f"\u00b1{z}\u03c3  (~{ {1:68,2:95,3:99.7}[z] }%)")
+    else:
+        k = 2
     ptot_max = st.number_input("Pressure-drop constraint (Pa)",
                                value=core.PTOT_MAX_DEFAULT, step=100.0)
 
@@ -43,18 +46,21 @@ with left:
 
     st.subheader("Prediction")
     feasible = p_tot <= ptot_max
+    has_sd = A.supports_std
+    band_note = "" if has_sd else f"point estimate (model: {A.model_name}; predictive bands need a Gaussian Process)"
 
     metric_card(SYM["r_th"] + "&nbsp;&nbsp;(K/W)", f"{r_th:.4f}",
-                sub=f"\u00b1{k}\u03c3 band [{u['r_th_lo'][0]:.4f}, {u['r_th_hi'][0]:.4f}] (symmetric)")
+                sub=(f"\u00b1{k}\u03c3 band [{u['r_th_lo'][0]:.4f}, {u['r_th_hi'][0]:.4f}] (symmetric)"
+                     if has_sd else band_note))
 
     metric_card(SYM["p_tot"] + "&nbsp;&nbsp;(Pa)", f"{p_tot:.1f}",
-                sub=f"\u00b1{k}\u03c3 band [{u['p_tot_lo'][0]:.1f}, {u['p_tot_hi'][0]:.1f}] "
-                    f"(log-space, asymmetric)",
+                sub=(f"\u00b1{k}\u03c3 band [{u['p_tot_lo'][0]:.1f}, {u['p_tot_hi'][0]:.1f}] "
+                     f"(log-space, asymmetric)" if has_sd else band_note),
                 value_color=(C_OK if feasible else C_ACCENT))
 
+    k_eq_sub = (f"band [{k_eq_lo:,.0f}, {k_eq_hi:,.0f}] &nbsp;|&nbsp; " if has_sd else "")
     metric_card(SYM["k_eq"] + "&nbsp;&nbsp;(W m\u207b\u00b9 K\u207b\u00b9)", f"{k_eq:,.0f}",
-                sub=f"band [{k_eq_lo:,.0f}, {k_eq_hi:,.0f}] &nbsp;|&nbsp; "
-                    f"{SYM['dT']} = Q\u00b7{SYM['r_th']} = {dT:.2f} K "
+                sub=k_eq_sub + f"{SYM['dT']} = Q\u00b7{SYM['r_th']} = {dT:.2f} K "
                     f"(Q = {core.Q_WATT:.0f} W, A<sub>c</sub> = 9.31\u00d710\u207b\u2076 m\u00b2, "
                     f"L<sub>eff</sub> = {core.L_EFF:.2f} m)")
 
@@ -90,4 +96,4 @@ with right:
     fig.update_layout(xaxis_title=AX["vp_vs"], yaxis_title=AX["po"])
     st.plotly_chart(base_layout(fig, height=560), use_container_width=True, config=PLOTLY_CONFIG)
     st.caption("Red line on the pressure-drop surface = the active limit. "
-               "Open circles = the 49 FEM samples.")
+               f"Open circles = the {A.n} FEM samples.")

@@ -62,17 +62,32 @@ with c1:
 
     st.subheader("Model provenance")
     m = A.manifest
-    st.markdown(
-        f"- **Surrogate:** `{m['best_model_name']}` (Mat\u00e9rn-2.5 + White kernel)\n"
-        f"- **Selection basis:** {m['selection_basis']}\n"
-        f"- **LOOCV overall R\u00b2:** `{m['loocv_overall_r2']:.4f}`\n"
-        f"- **LOOCV MAE / RMSE:** `{m['loocv_overall_mae']:.3f}` / `{m['loocv_overall_mse']**0.5:.3f}`\n"
-        f"- **Training samples:** n = {A.X_train.shape[0]}"
-    )
-    st.caption(
-        f"Small-sample caveat: with n={A.n} the surrogate is reliable only inside the sampled "
-        "region. Every page shows a domain-of-validity indicator; heed it before trusting a number."
-    )
+    is_gpr = ("gaussian" in A.model_class.lower()) or ("gpr" in str(A.model_name).lower())
+    kernel_txt = " (Mat\u00e9rn-2.5 + White kernel)" if is_gpr else ""
+    lines = [f"- **Best surrogate (selected by training):** `{A.model_name}`{kernel_txt}"]
+    if m.get("selection_basis"):
+        lines.append(f"- **Selection basis:** {m['selection_basis']}")
+    if m.get("loocv_overall_r2") is not None:
+        lines.append(f"- **LOOCV overall R\u00b2:** `{m['loocv_overall_r2']:.4f}`")
+    if m.get("loocv_overall_mae") is not None and m.get("loocv_overall_mse") is not None:
+        lines.append(f"- **LOOCV MAE / RMSE:** `{m['loocv_overall_mae']:.3f}` / "
+                     f"`{m['loocv_overall_mse']**0.5:.3f}`")
+    if A.n:
+        lines.append(f"- **Training samples:** n = {A.n}")
+    lines.append(f"- **Predictive uncertainty:** "
+                 f"{'available (Gaussian Process)' if A.supports_std else 'not available for this model type'}")
+    st.markdown("\n".join(lines))
+    if not A.supports_std:
+        st.caption(
+            f"This deployment uses a {A.model_name} surrogate, which yields point "
+            f"predictions. Forecast bands, the uncertainty surface and the Next-Experiment "
+            f"page are inactive; prediction, optimisation and tolerance analysis work normally."
+        )
+    else:
+        st.caption(
+            f"Small-sample caveat: with n={A.n} the surrogate is reliable only inside the sampled "
+            "region. Every page shows a domain-of-validity indicator; heed it before trusting a number."
+        )
 
 with c2:
     st.subheader("Design space & FEM samples")

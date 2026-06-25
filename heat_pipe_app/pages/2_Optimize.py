@@ -21,8 +21,8 @@ page_header("Constrained Optimisation",
 top_l, top_r = st.columns([1.6, 1], gap="large")
 with top_l:
     ptot_max = synced_input("Pressure-drop constraint limit " + SYM["p_tot"] + " (Pa)",
-                            1500.0, 10000.0, core.PTOT_MAX_DEFAULT, 100.0,
-                            key="opt_limit", fmt="%.0f")
+                            1500.0, 10000.0, core.PTOT_MAX_DEFAULT, 50.0,
+                            key="opt_limit", fmt="%.2f", num_step=0.01)
 with top_r:
     method = st.radio("Optimisation method",
                       ["SLSQP (gradient-based)", "Grid search (exhaustive)"],
