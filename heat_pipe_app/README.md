@@ -66,3 +66,32 @@ streamlit run app.py
   scalers load once (`st.cache_resource`).
 - The surrogate is trustworthy only **inside** the sampled region (n=49). Every page
   surfaces a domain indicator - heed it before trusting an extrapolated number.
+
+## Updating the surrogate to a newly trained model (privacy-preserving)
+
+The app is **self-configuring** - nothing dataset-specific is hardcoded. To deploy
+a model trained on a new dataset, you never need to upload anything anywhere:
+
+1. **Verify locally** (no data leaves your machine):
+   ```bash
+   python tools/inspect_artifacts.py /path/to/new/artifacts
+   ```
+   It reports the model type, the scikit-learn version it was pickled with, the
+   input/output schema, the derived design-space bounds and sample count, and a
+   COMPATIBLE / NOT COMPATIBLE verdict.
+
+2. **Drop the new files** into `artifacts/` (a surrogate `.pkl`, `scaler_X*.pkl`,
+   `scaler_y*.pkl`, and the manifest JSON). Filenames are auto-discovered; the
+   model file is read from the manifest's `file` field when present.
+
+3. **Pin scikit-learn** to the version the inspector printed (must match the
+   version that pickled the model), e.g. `scikit-learn==1.7.2` in `requirements.txt`.
+
+4. Push and redeploy. The app derives bounds and the sample count `n` directly
+   from the model's training data; all pages, optimisers, sigma maps and the
+   domain guard reconfigure automatically.
+
+**Requirement:** the production surrogate must be a fitted `GaussianProcessRegressor`
+(it must expose `X_train_`/`y_train_` and support `predict(return_std=True)`), with
+2 inputs and 2 outputs, the second output `log1p`-transformed. The app loads with a
+clear error if these are not met. The default pressure-drop constraint stays 4200 Pa.

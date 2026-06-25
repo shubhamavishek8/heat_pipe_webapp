@@ -70,7 +70,7 @@ with c1:
         f"- **Training samples:** n = {A.X_train.shape[0]}"
     )
     st.caption(
-        "Small-sample caveat: with n=49 the surrogate is reliable only inside the sampled "
+        f"Small-sample caveat: with n={A.n} the surrogate is reliable only inside the sampled "
         "region. Every page shows a domain-of-validity indicator; heed it before trusting a number."
     )
 

@@ -31,6 +31,7 @@ import json
 import warnings
 import numpy as np
 import joblib
+import glob
 from scipy.optimize import minimize
 from scipy.spatial import Delaunay
 
@@ -51,7 +52,8 @@ PRETTY = {
     "p_tot": "\u0394P\u209c\u2092\u209c  (total pressure drop, Pa)",
 }
 
-# Design-space bounds (user-supplied; equal to dataset min/max)
+# Design-space bounds: DEFAULTS only - Assets.__init__ overwrites these with
+# values derived from the loaded model's training data (per-input min/max).
 BOUNDS = {
     "vp_vs": (0.05, 0.95),
     "po":    (0.40, 0.77),
@@ -77,37 +79,119 @@ def k_eq_from_rth(r_th: float) -> float:
 
 
 # --------------------------------------------------------------------------- #
-# Asset loading
+# Artifact auto-discovery - no filenames hard-coded; drop new artifacts in and go
+# --------------------------------------------------------------------------- #
+def _glob1(*patterns):
+    """First file in ARTIFACT_DIR matching any of the glob patterns, else None."""
+    for pat in patterns:
+        hits = sorted(glob.glob(os.path.join(ARTIFACT_DIR, pat)))
+        if hits:
+            return hits[0]
+    return None
+
+
+def discover_artifacts():
+    """Locate manifest, model and scaler files by convention so that swapping in
+    a newly trained surrogate needs no code change. The model path is taken from
+    the manifest's "file" field when present, else inferred. Returns
+    (model_path, scaler_X_path, scaler_y_path, manifest_path)."""
+    manifest_path = _glob1("*manifest*.json", "*.json")
+    model_path = None
+    if manifest_path and os.path.exists(manifest_path):
+        try:
+            with open(manifest_path) as fh:
+                mf = json.load(fh)
+            if mf.get("file"):
+                cand = os.path.join(ARTIFACT_DIR, os.path.basename(mf["file"]))
+                if os.path.exists(cand):
+                    model_path = cand
+        except Exception:
+            pass
+    if model_path is None:
+        model_path = _glob1("best_surrogate*.pkl", "*surrogate*.pkl", "model*.pkl")
+    sx_path = _glob1("scaler_X*.pkl", "scaler_x*.pkl", "*scalerX*.pkl", "x_scaler*.pkl")
+    sy_path = _glob1("scaler_y*.pkl", "*scalerY*.pkl", "y_scaler*.pkl")
+    missing = [n for n, p in [("manifest JSON", manifest_path), ("surrogate .pkl", model_path),
+                              ("scaler_X .pkl", sx_path), ("scaler_y .pkl", sy_path)] if p is None]
+    if missing:
+        raise FileNotFoundError(
+            f"Missing artifact(s) in '{ARTIFACT_DIR}': {', '.join(missing)}. "
+            f"Expected a manifest JSON, a surrogate .pkl, and scaler_X*/scaler_y* .pkl.")
+    return model_path, sx_path, sy_path, manifest_path
+
+
+# --------------------------------------------------------------------------- #
+# Asset loading (self-configuring: bounds and sample count derived from the data)
 # --------------------------------------------------------------------------- #
 class Assets:
-    """Container for the loaded surrogate, scalers, manifest and recovered data."""
+    """Loads the surrogate, scalers and manifest, then DERIVES everything that
+    depends on the dataset (design-space bounds, sample count) directly from the
+    model's own training data - so a newly trained GPR can be dropped into
+    artifacts/ with no code edits."""
 
     def __init__(self):
+        global BOUNDS, LB, UB
+
+        model_path, sx_path, sy_path, manifest_path = discover_artifacts()
         with warnings.catch_warnings():
-            # InconsistentVersionWarning is expected if the runtime sklearn != 1.7.2.
-            warnings.simplefilter("ignore")
-            self.model    = joblib.load(os.path.join(ARTIFACT_DIR, "best_surrogate_GPR.pkl"))
-            self.scaler_X = joblib.load(os.path.join(ARTIFACT_DIR, "scaler_X2.pkl"))
-            self.scaler_y = joblib.load(os.path.join(ARTIFACT_DIR, "scaler_y2.pkl"))
-        with open(os.path.join(ARTIFACT_DIR, "best_surrogate_manifest.json")) as fh:
+            warnings.simplefilter("ignore")   # tolerate sklearn version mismatch warning
+            self.model    = joblib.load(model_path)
+            self.scaler_X = joblib.load(sx_path)
+            self.scaler_y = joblib.load(sy_path)
+        with open(manifest_path) as fh:
             self.manifest = json.load(fh)
 
-        # Recover the 49 training points from the GPR itself (no CSV needed).
-        self.X_train = self.scaler_X.inverse_transform(self.model.X_train_)
+        self.model_name = self.manifest.get("best_model_name", type(self.model).__name__)
+        self.sklearn_version = getattr(self.model, "_sklearn_version", None)
+
+        # ---- require a Gaussian Process (uncertainty, overlays, hull need it) -
+        if not (hasattr(self.model, "X_train_") and hasattr(self.model, "y_train_")):
+            raise RuntimeError(
+                f"The deployed surrogate must expose training data (X_train_/y_train_), "
+                f"i.e. a fitted GaussianProcessRegressor. Loaded model is "
+                f"'{type(self.model).__name__}'. Re-export the GPR surrogate from the "
+                f"pipeline - the app's predictive bands, domain guard, sigma maps and "
+                f"sample overlays all depend on it.")
+
+        X_train_raw = self.scaler_X.inverse_transform(self.model.X_train_)
+        if X_train_raw.shape[1] != 2 or np.asarray(self.model.y_train_).shape[1] != 2:
+            raise ValueError(
+                f"This app supports exactly 2 inputs and 2 outputs; the loaded model has "
+                f"{X_train_raw.shape[1]} inputs / {np.asarray(self.model.y_train_).shape[1]} outputs.")
+
+        try:
+            self.model.predict(self.scaler_X.transform(X_train_raw[:1]), return_std=True)
+        except TypeError:
+            raise RuntimeError(
+                f"The deployed surrogate does not support predict(return_std=True); a "
+                f"Gaussian Process is required. Loaded model is '{type(self.model).__name__}'.")
+
+        # ---- recover training data, sample count -----------------------------
+        self.X_train = X_train_raw
         y_log = self.scaler_y.inverse_transform(self.model.y_train_)
         y_orig = y_log.copy()
         y_orig[:, LOG_TRANSFORM_COL] = np.expm1(y_orig[:, LOG_TRANSFORM_COL])
         self.y_train = y_orig
+        self.n = int(self.X_train.shape[0])
 
-        # Reference scaled-sigma distribution over a dense in-domain grid,
-        # used to classify predictive confidence (soft extrapolation signal).
+        # ---- design-space bounds: manifest override, else data min/max -------
+        mb = self.manifest.get("bounds")
+        if isinstance(mb, dict) and all(k in mb for k in ("vp_vs", "po")):
+            BOUNDS = {k: (float(mb[k][0]), float(mb[k][1])) for k in ("vp_vs", "po")}
+        else:
+            BOUNDS = {"vp_vs": (float(self.X_train[:, 0].min()), float(self.X_train[:, 0].max())),
+                      "po":    (float(self.X_train[:, 1].min()), float(self.X_train[:, 1].max()))}
+        LB = np.array([BOUNDS["vp_vs"][0], BOUNDS["po"][0]])
+        UB = np.array([BOUNDS["vp_vs"][1], BOUNDS["po"][1]])
+        self.bounds, self.LB, self.UB = BOUNDS, LB, UB
+
+        # ---- reference sigma distribution + convex hull ----------------------
         gx = np.linspace(*BOUNDS["vp_vs"], 40)
         gy = np.linspace(*BOUNDS["po"], 40)
         GX, GY = np.meshgrid(gx, gy)
         grid = np.column_stack([GX.ravel(), GY.ravel()])
         _, sig_scaled = self._raw_predict(grid, return_std=True)
         self._sigma_ref = np.sort(sig_scaled)        # ascending
-        # Delaunay triangulation of training inputs for convex-hull membership.
         try:
             self._tri = Delaunay(self.X_train)
         except Exception:

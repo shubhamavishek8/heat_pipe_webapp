@@ -391,7 +391,7 @@ def add_training_points(fig: go.Figure, assets, marker_color=C_PRIMARY):
         x=assets.X_train[:, 0], y=assets.X_train[:, 1], mode="markers",
         marker=dict(size=6, color=marker_color, symbol="circle-open",
                     line=dict(width=1.6)),
-        name="FEM samples (n=49)",
+        name=f"FEM samples (n={assets.X_train.shape[0]})",
         hovertemplate="V<sub>p</sub>:V<sub>s</sub>=%{x:.3f}<br><i>\u03b5</i>=%{y:.3f}<extra></extra>",
     ))
     return fig

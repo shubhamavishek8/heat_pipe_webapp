@@ -68,7 +68,7 @@ if show_pts:
         pt_name = "FEM samples (\u03c3 at sample)"
     else:
         z_tr = A.y_train[:, 0 if mode == "rth" else 1]
-        pt_name = "FEM samples (n=49)"
+        pt_name = f"FEM samples (n={A.n})"
     fig.add_trace(go.Scatter3d(
         x=A.X_train[:, 0], y=A.X_train[:, 1], z=z_tr,
         mode="markers", name=pt_name,
