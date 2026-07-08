@@ -1,9 +1,0 @@
-{
-  "best_model_name": "GPR",
-  "selection_basis": "LOOCV Overall R\u00b2",
-  "loocv_overall_r2": 0.9994938987332029,
-  "loocv_overall_mae": 14.33425945976137,
-  "loocv_overall_mse": 1863.4718593510668,
-  "is_ann": false,
-  "file": "best_surrogate_GPR.pkl"
-}
