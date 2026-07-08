@@ -56,7 +56,14 @@ with c1:
         f"- **Optimise** - constrained min-{SYM['r_th']} (SLSQP) + {SYM['r_th']}/{SYM['p_tot']} trade-off front\n"
         "- **Tolerance Analysis** - manufacturing-tolerance propagation & yield\n"
         "- **3D Insight** - response surfaces and the model-uncertainty surface\n"
-        f"- **Next Experiment** - \u03c3 map with suggested locations for the next FEM run",
+        f"- **Next Experiment** - \u03c3 map with suggested locations for the next FEM run\n"
+        "- **Compare Models** - every saved surrogate\u0027s prediction at one design point, side by side\n"
+        "- **Sensitivity Explorer** - 1-D response slices with bands + local derivatives\n"
+        "- **Batch Predict** - CSV in, predictions + bands + feasibility out\n"
+        "- **Inverse Design** - target a resistance, get feasible candidate designs\n"
+        "- **Model Validation** - parity & residual plots behind the R\u00b2 numbers\n"
+        "- **Report** - one-click PDF summary of the headline results\n"
+        "- **Authors** - who is behind the study",
         unsafe_allow_html=True,
     )
 

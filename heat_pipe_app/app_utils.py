@@ -31,6 +31,7 @@ C_ACCENT  = "#c0392b"
 C_OK      = "#1e8449"
 C_WARN    = "#b9770e"
 C_PURPLE  = "#6f54b0"
+C_SELECT  = "#ff4b4b"   # widget-selected red - same red the sliders use
 
 TEXT   = "#1a2230"
 MUTED  = "#5a6675"
@@ -116,6 +117,11 @@ def cached_sigma_grid(n_vp: int, n_po: int):
     return VP, PO, SIG
 
 
+@st.cache_resource(show_spinner="Loading all surrogate models\u2026")
+def get_model_bank():
+    return core.ModelBank(get_assets())
+
+
 @st.cache_data(show_spinner="Tracing the Pareto front\u2026")
 def cached_pareto(n: int):
     return core.pareto_front(get_assets(), n=n)
@@ -164,19 +170,38 @@ def inject_css():
           [data-testid="stTickBar"] *
           {{ color: #44505f !important; font-family: {FONT_TNR} !important; }}
 
-          /* ---------- radio & checkbox: rely on Streamlit's native rendering --
-             (selected = theme red, unselected = white + thin border, NO label box).
-             We only ensure the label TEXT is dark/legible and never draw a box
-             around it - the earlier custom indicator CSS was wrongly boxing labels. */
+          /* ---------- radio & checkbox indicators: theme-blended ------------
+             Selected = the theme red used by the sliders; unselected = white
+             with a thin dark border. Selectors target ONLY the indicator
+             element (first span/div inside the BaseWeb label), never the label
+             text, so labels can never be boxed. `:has(input:checked)` carries
+             the state; aria-checked is kept as a fallback. */
           [data-testid="stRadio"] label, [data-testid="stCheckbox"] label
           {{ background: transparent !important; border: none !important;
              box-shadow: none !important; }}
           [data-testid="stRadio"] label p
           {{ color: {TEXT} !important; font-family: {FONT_TNR} !important; font-size: 1.0rem; }}
           [data-testid="stCheckbox"] label p {{ color: {TEXT} !important; }}
-          /* unchecked box: ensure a clean thin border, no fill (no recolor of label) */
-          [data-baseweb="checkbox"] > span:first-child
-          {{ border-color: #333333 !important; }}
+
+          /* checkbox box */
+          [data-baseweb="checkbox"] > span:first-of-type
+          {{ background-color: #ffffff !important; border: 1.5px solid #444a55 !important;
+             border-radius: 4px; }}
+          [data-baseweb="checkbox"]:has(input:checked) > span:first-of-type,
+          [data-baseweb="checkbox"][aria-checked="true"] > span:first-of-type
+          {{ background-color: {C_SELECT} !important; border-color: {C_SELECT} !important; }}
+          [data-baseweb="checkbox"] > span:first-of-type svg,
+          [data-baseweb="checkbox"] > span:first-of-type svg path
+          {{ fill: #ffffff !important; stroke: #ffffff !important; }}
+
+          /* radio circle */
+          [data-baseweb="radio"] > div:first-of-type
+          {{ background-color: #ffffff !important; border: 2px solid #444a55 !important; }}
+          [data-baseweb="radio"]:has(input:checked) > div:first-of-type,
+          [data-baseweb="radio"][aria-checked="true"] > div:first-of-type
+          {{ border-color: {C_SELECT} !important; background-color: #ffffff !important; }}
+          [data-baseweb="radio"]:has(input:checked) > div:first-of-type > div
+          {{ background-color: {C_SELECT} !important; }}
 
           /* code chips */
           code {{ background-color: #eef2f8 !important; color: #b02a50 !important; }}

@@ -573,3 +573,148 @@ def evaluate_grid(assets: Assets, n_vp: int = 80, n_po: int = 80):
     R = y[:, 0].reshape(VP.shape)
     P = y[:, 1].reshape(VP.shape)
     return VP, PO, R, P
+
+
+# =========================================================================== #
+# Multi-model comparison  (v7.2 "save all models")
+# =========================================================================== #
+# Reads all_models_manifest.json (written by the pipeline's Section 18.9) and
+# loads EVERY saved surrogate for side-by-side prediction. Capability-aware:
+#   - scikit-learn models (RF/SVR/Ridge/GPR)  -> joblib, always loadable
+#   - XGBoost (.pkl)                          -> needs the `xgboost` package
+#   - ANN (.keras)                            -> needs `tensorflow`
+# A model whose dependency is absent is reported as unavailable (with a reason)
+# instead of crashing the page. An OPTIONAL precomputed grid (all_models_grid.npz)
+# is used as a dependency-free fallback so ANN/XGBoost can still be compared
+# without installing heavy libraries (see export block in the docs).
+# =========================================================================== #
+def _sanitize(name):
+    return str(name).replace(" ", "_")
+
+
+class ModelBank:
+    """Loads all saved surrogates for comparison and predicts with each."""
+
+    def __init__(self, assets: "Assets"):
+        self.scaler_X = assets.scaler_X
+        self.scaler_y = assets.scaler_y
+        self.log_col = LOG_TRANSFORM_COL
+        self.best_name = assets.model_name
+        self.available = False
+        self.order = []                 # display order of model names
+        self.status = {}                # name -> dict(available, reason, loocv, is_ann, source)
+        self._models = {}               # name -> loaded live object
+        self._grid = None               # optional np.lib.npyio.NpzFile
+        self._grid_interp = {}          # name -> (interp_r_th, interp_p_tot)
+
+        amf = _glob1("all_models_manifest.json", "*all*model*manifest*.json")
+        if not amf:
+            return                      # page will show a "not available" note
+        with open(amf) as fh:
+            mf = json.load(fh)
+        self.available = True
+        prep = mf.get("preprocessing", {})
+        self.log_col = int(prep.get("log_transform_col", LOG_TRANSFORM_COL))
+        self.best_name = mf.get("best_model_loocv", self.best_name)
+        self.n = mf.get("n_training_samples")
+        models = mf.get("models", {})
+        self.order = list(models.keys())
+
+        # optional precomputed grid (dependency-free fallback)
+        gpath = _glob1("all_models_grid.npz", "*model*grid*.npz")
+        if gpath:
+            try:
+                self._grid = np.load(gpath, allow_pickle=False)
+                self._build_grid_interp()
+            except Exception:
+                self._grid = None
+
+        for name, info in models.items():
+            entry = {"available": False, "reason": "", "source": None,
+                     "is_ann": bool(info.get("is_ann", False)),
+                     "loocv": info.get("loocv", {})}
+            path = os.path.join(ARTIFACT_DIR, os.path.basename(info.get("file", "")))
+            if not info.get("file") or not os.path.exists(path):
+                entry["reason"] = "model file not found in artifacts/"
+            elif entry["is_ann"] or path.lower().endswith((".keras", ".h5")):
+                try:
+                    from tensorflow import keras       # noqa
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        self._models[name] = keras.models.load_model(path, compile=False)
+                    entry.update(available=True, source="live (Keras)")
+                except Exception:
+                    entry["reason"] = "requires tensorflow"
+            else:
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        self._models[name] = joblib.load(path)
+                    entry.update(available=True, source="live")
+                except ModuleNotFoundError as e:
+                    entry["reason"] = f"requires the '{e.name}' package"
+                except Exception as e:
+                    entry["reason"] = f"load error ({type(e).__name__})"
+
+            # fall back to the precomputed grid if the live load failed
+            if not entry["available"] and _sanitize(name) in self._grid_interp:
+                entry.update(available=True, source="precomputed grid")
+            self.status[name] = entry
+
+    # -- precomputed-grid handling ----------------------------------------- #
+    def _build_grid_interp(self):
+        from scipy.interpolate import RegularGridInterpolator
+        g = self._grid
+        if "vp_grid" not in g or "po_grid" not in g:
+            return
+        vp, po = g["vp_grid"], g["po_grid"]
+        for key in g.files:
+            if not key.startswith("pred__"):
+                continue
+            name_key = key[len("pred__"):]
+            arr = g[key]                              # (n_po, n_vp, 2), original units
+            if arr.ndim != 3 or arr.shape[2] != 2:
+                continue
+            ir = RegularGridInterpolator((po, vp), arr[:, :, 0], bounds_error=False, fill_value=None)
+            ip = RegularGridInterpolator((po, vp), arr[:, :, 1], bounds_error=False, fill_value=None)
+            self._grid_interp[name_key] = (ir, ip)
+
+    def _predict_grid(self, name, x_raw):
+        ir, ip = self._grid_interp[_sanitize(name)]
+        pt = np.array([[x_raw[1], x_raw[0]]])         # (po, vp) order
+        return float(ir(pt)[0]), float(ip(pt)[0])
+
+    # -- prediction -------------------------------------------------------- #
+    def predict_all(self, x_raw):
+        """Return {model_name: (r_th, p_tot)} for every AVAILABLE model."""
+        x = np.atleast_2d(np.asarray(x_raw, dtype=float))
+        Xs = self.scaler_X.transform(x)
+        out = {}
+        for name in self.order:
+            entry = self.status.get(name, {})
+            if not entry.get("available"):
+                continue
+            if entry["source"] == "precomputed grid":
+                out[name] = self._predict_grid(name, x[0])
+                continue
+            m = self._models[name]
+            ys = m.predict(Xs, verbose=0) if entry["is_ann"] else m.predict(Xs)
+            y = self.scaler_y.inverse_transform(np.atleast_2d(ys))[0].astype(float).copy()
+            y[self.log_col] = np.expm1(y[self.log_col])
+            out[name] = (float(y[0]), float(y[1]))
+        return out
+
+    def gpr_sigma(self, x_raw):
+        """GPR-only predictive +/-2 sigma on p_tot (original units), or None."""
+        m = self._models.get("GPR")
+        if m is None or not hasattr(m, "predict"):
+            return None
+        try:
+            x = np.atleast_2d(np.asarray(x_raw, dtype=float))
+            mean, std = m.predict(self.scaler_X.transform(x), return_std=True)
+            std = np.atleast_2d(std)
+            sig_log = std[0, self.log_col] * self.scaler_y.scale_[self.log_col]
+            mu_log = self.scaler_y.inverse_transform(np.atleast_2d(mean))[0, self.log_col]
+            return (float(np.expm1(mu_log - 2 * sig_log)), float(np.expm1(mu_log + 2 * sig_log)))
+        except Exception:
+            return None
