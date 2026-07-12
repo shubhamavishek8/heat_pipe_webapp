@@ -27,7 +27,6 @@ with ctrl[1]:
     ptot_max = st.number_input("Pressure-drop limit (Pa)",
                                value=core.PTOT_MAX_DEFAULT, step=100.0)
 with ctrl[2]:
-    show_pts = st.checkbox("Show FEM samples", value=True)
     show_opt = st.checkbox("Show optimum", value=True)
 
 VP, PO, R, P = cached_grid(70, 70)
@@ -60,22 +59,6 @@ if mode == "ptot":
         x=gx, y=gy, z=plane, showscale=False, opacity=0.35,
         colorscale=[[0, C_ACCENT], [1, C_ACCENT]],
         name=f"limit = {ptot_max:.0f} Pa", hoverinfo="skip", showlegend=True))
-
-# FEM training samples
-if show_pts:
-    if mode == "sigma":
-        u_tr = core.predict_with_uncertainty(A, A.X_train, k=1.0)
-        z_tr = u_tr["r_th_sigma"]
-        pt_name = "FEM samples (\u03c3 at sample)"
-    else:
-        z_tr = A.y_train[:, 0 if mode == "rth" else 1]
-        pt_name = f"FEM samples (n={A.n})"
-    fig.add_trace(go.Scatter3d(
-        x=A.X_train[:, 0], y=A.X_train[:, 1], z=z_tr,
-        mode="markers", name=pt_name,
-        marker=dict(size=4, color="#1a2230", line=dict(width=1, color="white")),
-        hovertemplate="V<sub>p</sub>:V<sub>s</sub>=%{x:.3f}<br><i>\u03b5</i>=%{y:.3f}<br>"
-                      + zlabel + "=%{z:.3g}<extra></extra>"))
 
 # Constrained optimum marker
 if show_opt:

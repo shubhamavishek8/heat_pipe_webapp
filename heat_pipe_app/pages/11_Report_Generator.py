@@ -1,6 +1,7 @@
 """Page 11 - Report Generator: compile the study's headline results (provenance,
-constrained optimum, local sensitivities, Pareto front) into a downloadable
-one-page PDF - a reviewer-ready summary produced from the live surrogate."""
+GPR performance metrics, the constrained optimum, a Monte-Carlo manufacturing
+yield at that optimum, and the Pareto front) into a downloadable one-page PDF
+typeset in a Times New Roman style (embedded Liberation Serif)."""
 import numpy as np
 import streamlit as st
 
@@ -14,55 +15,53 @@ inject_css()
 A = get_assets()
 
 page_header("Design Report Generator",
-            f"One click compiles the surrogate provenance, the constrained optimum with "
-            f"{SYM['k_eq']}, local sensitivities, and the Pareto front into a one-page PDF "
-            f"generated from the live model - reviewer-ready and reproducible.")
+            f"One click compiles the surrogate provenance, {A.model_name} performance "
+            f"metrics, the constrained optimum with {SYM['k_eq']}, a manufacturing-yield "
+            f"analysis at that optimum, and the Pareto front into a one-page PDF - "
+            f"reviewer-ready and generated live from the model.")
 
 c1, c2 = st.columns([1, 2], gap="large")
 with c1:
     ptot_max = st.number_input("Pressure-drop limit for the report (Pa)",
                                value=core.PTOT_MAX_DEFAULT, step=100.0)
+    tol_vp = st.number_input("Yield tolerance \u00b1 on Vp:Vs", min_value=0.001,
+                             max_value=0.2, value=0.030, step=0.005, format="%.3f")
+    tol_po = st.number_input("Yield tolerance \u00b1 on \u03b5", min_value=0.001,
+                             max_value=0.1, value=0.020, step=0.005, format="%.3f")
     go_btn = st.button("Generate PDF report", type="primary")
 
 with c2:
     st.markdown(
-        "**The report contains:**\n"
-        "1. Surrogate provenance - best model, LOOCV scores, n, design space, fixed "
-        "physical parameters\n"
-        "2. The constrained optimum at your chosen limit - design, "
-        "R\u209c\u2095*, \u0394P\u209c\u2092\u209c*, slack, k\u2091\u146f*, solver, "
-        "grid cross-check, domain trust\n"
-        "3. Local sensitivities at the optimum (central differences)\n"
-        "4. The Pareto front as a vector chart with the limit and optimum marked")
+        f"**The report contains:**\n"
+        f"1. Surrogate provenance - best model, n, design space, fixed physical parameters\n"
+        f"2. {A.model_name} performance metrics - LOOCV R\u00b2, MAE, RMSE\n"
+        f"3. The constrained optimum at your chosen limit - design, minimum "
+        f"{SYM['r_th']}, {SYM['p_tot']}, slack, {SYM['k_eq']}, solver, grid cross-check, "
+        f"domain trust\n"
+        f"4. Manufacturing yield at the optimum - Monte-Carlo with your tolerances\n"
+        f"5. The Pareto front - vector chart with major/minor grid, the limit and the "
+        f"optimum marked",
+        unsafe_allow_html=True)
 
 if go_btn:
-    with st.spinner("Solving and composing the report\u2026"):
+    with st.spinner("Solving, sampling and composing the report\u2026"):
         sol = core.optimize_min_rth(A, ptot_max=ptot_max)
         other = core.grid_search_min_rth(A, ptot_max=ptot_max) if sol is not None else None
         caps, Rf, Pf = cached_pareto(22)
-        sens, status = None, None
-        if sol is not None:
-            vp, po = sol["vp_vs"], sol["po"]
-            h_vp = 0.01 * (core.UB[0] - core.LB[0])
-            h_po = 0.01 * (core.UB[1] - core.LB[1])
-            cl = lambda v, lo, hi: float(np.clip(v, lo, hi))
-            yv1 = core.predict(A, [cl(vp + h_vp, *core.BOUNDS["vp_vs"]), po])[0]
-            yv0 = core.predict(A, [cl(vp - h_vp, *core.BOUNDS["vp_vs"]), po])[0]
-            yp1 = core.predict(A, [vp, cl(po + h_po, *core.BOUNDS["po"])])[0]
-            yp0 = core.predict(A, [vp, cl(po - h_po, *core.BOUNDS["po"])])[0]
-            sens = {"dr_dvp": (yv1[0] - yv0[0]) / (2 * h_vp),
-                    "dr_dpo": (yp1[0] - yp0[0]) / (2 * h_po),
-                    "dp_dvp": (yv1[1] - yv0[1]) / (2 * h_vp),
-                    "dp_dpo": (yp1[1] - yp0[1]) / (2 * h_po)}
-            status = core.domain_status(A, [vp, po])
+        status = core.domain_status(A, [sol["vp_vs"], sol["po"]]) if sol is not None else None
+        yld = (report_utils.yield_analysis(A, sol, ptot_max, tol_vp, tol_po)
+               if sol is not None else None)
         pdf_bytes = report_utils.build_report_pdf(A, ptot_max, sol, other, caps, Rf,
-                                                  sens, status)
+                                                  status, yld)
     if sol is not None:
         metric_card("Optimum captured in the report",
-                    f"{sol['r_th']:.4f} K/W",
+                    f"{sol['r_th']:.3f} K/W",
                     sub=f"{SYM['vp_vs']} = {sol['vp_vs']:.4f}, {SYM['po']} = {sol['po']:.4f}, "
-                        f"slack {sol['slack']:.1f} Pa", value_color=C_OK)
+                        f"slack {sol['slack']:.2f} Pa"
+                        + (f" &nbsp;|&nbsp; yield {yld['yield_pct']:.1f}%" if yld else ""),
+                    value_color=C_OK)
     st.download_button("Download design_report.pdf", pdf_bytes,
                        file_name="design_report.pdf", mime="application/pdf")
-    st.caption("The PDF uses ASCII variable names (R_th, dP_tot) because core PDF fonts "
-               "are latin-1; every number comes from the live surrogate at generation time.")
+    st.caption("The PDF is typeset in Liberation Serif (metrically Times-compatible) with "
+               "true italic variables and subscripts; every number comes from the live "
+               "surrogate at generation time.")

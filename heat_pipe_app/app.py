@@ -58,10 +58,7 @@ with c1:
         "- **3D Insight** - response surfaces and the model-uncertainty surface\n"
         f"- **Next Experiment** - \u03c3 map with suggested locations for the next FEM run\n"
         "- **Compare Models** - every saved surrogate\u0027s prediction at one design point, side by side\n"
-        "- **Sensitivity Explorer** - 1-D response slices with bands + local derivatives\n"
         "- **Batch Predict** - CSV in, predictions + bands + feasibility out\n"
-        "- **Inverse Design** - target a resistance, get feasible candidate designs\n"
-        "- **Model Validation** - parity & residual plots behind the R\u00b2 numbers\n"
         "- **Report** - one-click PDF summary of the headline results\n"
         "- **Authors** - who is behind the study",
         unsafe_allow_html=True,
@@ -75,7 +72,7 @@ with c1:
     if m.get("selection_basis"):
         lines.append(f"- **Selection basis:** {m['selection_basis']}")
     if m.get("loocv_overall_r2") is not None:
-        lines.append(f"- **LOOCV overall R\u00b2:** `{m['loocv_overall_r2']:.4f}`")
+        lines.append(f"- **LOOCV overall R\u00b2:** `{m['loocv_overall_r2']:.3f}`")
     if m.get("loocv_overall_mae") is not None and m.get("loocv_overall_mse") is not None:
         lines.append(f"- **LOOCV MAE / RMSE:** `{m['loocv_overall_mae']:.3f}` / "
                      f"`{m['loocv_overall_mse']**0.5:.3f}`")
@@ -97,14 +94,13 @@ with c1:
         )
 
 with c2:
-    st.subheader("Design space & FEM samples")
+    st.subheader("Design space")
     lo_vp, hi_vp = core.BOUNDS["vp_vs"]
     lo_po, hi_po = core.BOUNDS["po"]
     fig = go.Figure()
-    add_training_points(fig, A, marker_color=C_PRIMARY)
     fig.add_shape(type="rect", x0=lo_vp, x1=hi_vp, y0=lo_po, y1=hi_po,
                   line=dict(color=C_ACCENT, dash="dash"))
-    fig.update_layout(xaxis_title=AX["vp_vs"], yaxis_title=AX["po"], showlegend=True)
+    fig.update_layout(xaxis_title=AX["vp_vs"], yaxis_title=AX["po"], showlegend=False)
     fig.update_xaxes(range=[lo_vp - 0.03, hi_vp + 0.03])
     fig.update_yaxes(range=[lo_po - 0.02, hi_po + 0.02])
     st.plotly_chart(base_layout(fig), use_container_width=True, config=PLOTLY_CONFIG)

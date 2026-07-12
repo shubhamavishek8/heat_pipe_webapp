@@ -87,10 +87,10 @@ X = df_in[["vp_vs", "po"]].to_numpy(dtype=float)
 u = core.predict_with_uncertainty(A, X, k=2.0)
 
 out = df_in.copy()
-out["r_th_K_per_W"] = np.round(u["r_th"], 6)
+out["r_th_K_per_W"] = np.round(u["r_th"], 3)
 if A.supports_std:
-    out["r_th_lo_2sig"] = np.round(u["r_th_lo"], 6)
-    out["r_th_hi_2sig"] = np.round(u["r_th_hi"], 6)
+    out["r_th_lo_2sig"] = np.round(u["r_th_lo"], 3)
+    out["r_th_hi_2sig"] = np.round(u["r_th_hi"], 3)
 out["p_tot_Pa"] = np.round(u["p_tot"], 2)
 if A.supports_std:
     out["p_tot_lo_2sig"] = np.round(u["p_tot_lo"], 2)

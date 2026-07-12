@@ -69,7 +69,7 @@ with right:
         rth = [r["r_th"] for r in avail_rows]
         colors = [C_ACCENT if r["is_best"] else C_PRIMARY for r in avail_rows]
         fig = go.Figure(go.Bar(x=names, y=rth, marker_color=colors,
-                               text=[f"{v:.4f}" for v in rth], textposition="outside",
+                               text=[f"{v:.3f}" for v in rth], textposition="outside",
                                cliponaxis=False))
         fig.update_layout(xaxis_title="", yaxis_title=AX["r_th"])
         fig = base_layout(fig, height=380, legend_below=False)
@@ -79,7 +79,7 @@ with right:
         st.subheader("Predicted pressure drop by model")
         pt = [r["p_tot"] for r in avail_rows]
         fig2 = go.Figure(go.Bar(x=names, y=pt, marker_color=colors,
-                                text=[f"{v:.0f}" for v in pt], textposition="outside",
+                                text=[f"{v:.2f}" for v in pt], textposition="outside",
                                 cliponaxis=False))
         fig2.update_layout(xaxis_title="", yaxis_title=AX["p_tot"])
         fig2 = base_layout(fig2, height=380, legend_below=False)
@@ -103,15 +103,15 @@ for r in rows:
     star = " \u2605 best" if r["is_best"] else ""
     if r["avail"]:
         keq = core.k_eq_from_rth(r["r_th"])
-        r2 = f"{r['r2']:.4f}" if r["r2"] is not None else "\u2013"
+        r2 = f"{r['r2']:.3f}" if r["r2"] is not None else "\u2013"
         if best_rth and not r["is_best"]:
             dvb = f"{(r['r_th']-best_rth)/best_rth*100:+.2f}%"
         else:
             dvb = "\u2013" if not r["is_best"] else "ref"
         body += (f"<tr style='border-bottom:1px solid {BORDER};{hl}'>"
                  f"<td style='padding:6px 10px'>{r['name']}{star}</td>"
-                 f"<td style='text-align:center'>{r['r_th']:.4f}</td>"
-                 f"<td style='text-align:center'>{r['p_tot']:.1f}</td>"
+                 f"<td style='text-align:center'>{r['r_th']:.3f}</td>"
+                 f"<td style='text-align:center'>{r['p_tot']:.2f}</td>"
                  f"<td style='text-align:center'>{keq:,.0f}</td>"
                  f"<td style='text-align:center'>{dvb}</td>"
                  f"<td style='text-align:center'>{r2}</td>"
@@ -126,7 +126,7 @@ st.markdown(f"<table style='width:100%;border-collapse:collapse;font-family:{FON
 
 if sig is not None:
     st.caption(f"GPR is the only model with a predictive interval: its \u00b12\u03c3 band on "
-               f"{SYM['p_tot']} here is [{sig[0]:.1f}, {sig[1]:.1f}] Pa. The other models return "
+               f"{SYM['p_tot']} here is [{sig[0]:.2f}, {sig[1]:.2f}] Pa. The other models return "
                f"point estimates only. Star marks the pipeline's LOOCV-selected best model.")
 
 unavailable = [r for r in rows if not r["avail"]]

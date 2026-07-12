@@ -63,9 +63,9 @@ with left:
         st.error("No feasible solution at this limit - try loosening the pressure-drop limit.")
     else:
         k_eq_opt = core.k_eq_from_rth(sol["r_th"])
-        metric_card(SYM["r_th"] + "*&nbsp;&nbsp;(K/W)", f"{sol['r_th']:.4f}")
-        metric_card(SYM["p_tot"] + "*&nbsp;&nbsp;(Pa)", f"{sol['p_tot']:.1f}",
-                    sub=f"slack {sol['slack']:.1f} Pa")
+        metric_card(SYM["r_th"] + "*&nbsp;&nbsp;(K/W)", f"{sol['r_th']:.3f}")
+        metric_card(SYM["p_tot"] + "*&nbsp;&nbsp;(Pa)", f"{sol['p_tot']:.2f}",
+                    sub=f"slack {sol['slack']:.2f} Pa")
         metric_card(SYM["k_eq"] + "*&nbsp;&nbsp;(W m\u207b\u00b9 K\u207b\u00b9)",
                     f"{k_eq_opt:,.0f}",
                     sub=f"L<sub>eff</sub>/(A<sub>c</sub>\u00b7{SYM['r_th']}*) with "
@@ -102,8 +102,8 @@ with left:
                     f"**{other_name} optimum:** "
                     f"{SYM['vp_vs']}= <code>{other['vp_vs']:.4f}</code> , "
                     f"{SYM['po']}= <code>{other['po']:.4f}</code> , "
-                    f"{SYM['r_th']}= <code>{other['r_th']:.4f}</code> , "
-                    f"{SYM['p_tot']}= <code>{other['p_tot']:.1f}</code> Pa. "
+                    f"{SYM['r_th']}= <code>{other['r_th']:.3f}</code> , "
+                    f"{SYM['p_tot']}= <code>{other['p_tot']:.2f}</code> Pa. "
                     f"Difference in {SYM['r_th']}: "
                     f"<code>{abs(other['r_th']-sol['r_th']):.2e}</code> K/W.",
                     unsafe_allow_html=True)

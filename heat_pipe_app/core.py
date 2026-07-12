@@ -61,7 +61,7 @@ BOUNDS = {
 LB = np.array([BOUNDS["vp_vs"][0], BOUNDS["po"][0]])
 UB = np.array([BOUNDS["vp_vs"][1], BOUNDS["po"][1]])
 
-PTOT_MAX_DEFAULT = 4200.0      # default constraint limit (Pa)
+PTOT_MAX_DEFAULT = 4358.0      # default constraint limit (Pa)
 FEAS_TOL = 1e-3                # engineering tolerance on p_tot
 
 # Fixed heat-pipe parameters for equivalent thermal conductivity (user-specified)

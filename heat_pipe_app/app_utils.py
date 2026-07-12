@@ -203,6 +203,64 @@ def inject_css():
           [data-baseweb="radio"]:has(input:checked) > div:first-of-type > div
           {{ background-color: {C_SELECT} !important; }}
 
+          /* ---------- radio: kill the dark inner dot when UNCHECKED ---------- */
+          [data-baseweb="radio"]:not(:has(input:checked)) > div:first-of-type > div
+          {{ background-color: transparent !important; }}
+          [data-baseweb="radio"]:has(input:checked) > div:first-of-type > div
+          {{ background-color: {C_SELECT} !important; }}
+          /* checkbox: hide the tick glyph entirely when unchecked */
+          [data-baseweb="checkbox"]:not(:has(input:checked)) > span:first-of-type svg
+          {{ visibility: hidden; }}
+
+          /* ---------- sidebar collapse/expand chevron (was invisible) ------- */
+          [data-testid="stSidebarCollapsedControl"],
+          [data-testid="stSidebarCollapseButton"],
+          [data-testid="collapsedControl"]
+          {{ color: {TEXT} !important; background-color: #eef2f8 !important;
+             border: 1px solid {BORDER} !important; border-radius: 8px; }}
+          [data-testid="stSidebarCollapsedControl"] svg,
+          [data-testid="stSidebarCollapseButton"] svg,
+          [data-testid="collapsedControl"] svg
+          {{ fill: {TEXT} !important; color: {TEXT} !important; }}
+
+          /* ---------- buttons: light secondary, red primary ----------------- */
+          .stButton > button, .stDownloadButton > button,
+          [data-testid="stFileUploader"] button
+          {{ background-color: #ffffff !important; color: {TEXT} !important;
+             border: 1px solid #c9d2de !important; }}
+          .stButton > button *, .stDownloadButton > button *,
+          [data-testid="stFileUploader"] button * {{ color: {TEXT} !important; }}
+          .stButton > button:hover, .stDownloadButton > button:hover
+          {{ border-color: {C_SELECT} !important; color: {C_SELECT} !important; }}
+          .stButton > button[kind="primary"],
+          button[data-testid="stBaseButton-primary"]
+          {{ background-color: {C_SELECT} !important; border: none !important; }}
+          .stButton > button[kind="primary"] *,
+          button[data-testid="stBaseButton-primary"] *
+          {{ color: #ffffff !important; }}
+
+          /* ---------- file-uploader dropzone (was black-on-black) ----------- */
+          [data-testid="stFileUploaderDropzone"]
+          {{ background-color: #eef2f8 !important;
+             border: 1.5px dashed #b9c3d2 !important; border-radius: 8px; }}
+          [data-testid="stFileUploader"] p, [data-testid="stFileUploader"] span,
+          [data-testid="stFileUploader"] small, [data-testid="stFileUploader"] div
+          {{ color: {TEXT} !important; }}
+          [data-testid="stFileUploaderDropzone"] svg {{ fill: {MUTED} !important; }}
+
+          /* ---------- textarea + placeholders (was invisible) --------------- */
+          .stApp textarea
+          {{ background-color: #ffffff !important; color: {TEXT} !important;
+             -webkit-text-fill-color: {TEXT} !important; caret-color: {TEXT}; }}
+          .stApp textarea::placeholder, .stApp input::placeholder
+          {{ color: #96a1b0 !important; -webkit-text-fill-color: #96a1b0 !important;
+             opacity: 1 !important; }}
+
+          /* ---------- select dropdown popover ------------------------------- */
+          [data-baseweb="popover"] [role="listbox"],
+          [data-baseweb="popover"] [role="option"], [data-baseweb="popover"] li
+          {{ background-color: #ffffff !important; color: {TEXT} !important; }}
+
           /* code chips */
           code {{ background-color: #eef2f8 !important; color: #b02a50 !important; }}
 
@@ -418,8 +476,11 @@ def style_scene(fig: go.Figure, height=640):
     return fig
 
 
+SHOW_FEM_SAMPLES = False   # privacy: never plot the design points themselves
+
+
 def add_training_points(fig: go.Figure, assets, marker_color=C_PRIMARY):
-    if getattr(assets, "X_train", None) is None:
+    if not SHOW_FEM_SAMPLES or getattr(assets, "X_train", None) is None:
         return fig
     fig.add_trace(go.Scatter(
         x=assets.X_train[:, 0], y=assets.X_train[:, 1], mode="markers",

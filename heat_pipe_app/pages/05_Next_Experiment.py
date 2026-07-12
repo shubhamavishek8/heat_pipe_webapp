@@ -89,8 +89,8 @@ with left:
             f"{SYM['po']} = {cd['po']:.3f}",
             f"\u03c3 = {cd['sigma']:.4f} K/W",
             sub=f"{ratio:.1f}\u00d7 the median \u03c3 &nbsp;|&nbsp; surrogate predicts "
-                f"{SYM['r_th']} \u2248 {cd['r_th']:.4f} K/W, "
-                f"{SYM['p_tot']} \u2248 {cd['p_tot']:.0f} Pa",
+                f"{SYM['r_th']} \u2248 {cd['r_th']:.3f} K/W, "
+                f"{SYM['p_tot']} \u2248 {cd['p_tot']:.2f} Pa",
             value_color=C_WARN if i == 1 else None)
     st.caption("Greedy maximum-uncertainty selection with a 10%-of-range exclusion radius "
                "so candidates do not cluster on a single ridge. Re-running the FEM at #1 "
@@ -120,6 +120,6 @@ with right:
                         line=dict(width=1.5, color="#1a2230"))))
     fig.update_layout(xaxis_title=AX["vp_vs"], yaxis_title=AX["po"])
     st.plotly_chart(base_layout(fig, height=560), use_container_width=True, config=PLOTLY_CONFIG)
-    st.caption(f"Bright ridges = least-trusted regions (far from the {A.n} samples). Valleys sit "
-               "on the FEM points. Red line = pressure-drop feasibility boundary; gold stars "
+    st.caption("Bright ridges = least-trusted regions of the design space. Valleys mark "
+               "where the surrogate is well anchored. Red line = pressure-drop feasibility boundary; gold stars "
                "= suggested next simulations, numbered by priority.")

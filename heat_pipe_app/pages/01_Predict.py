@@ -67,12 +67,12 @@ with left:
     has_sd = A.supports_std
     band_note = "" if has_sd else f"point estimate (model: {A.model_name}; predictive bands need a Gaussian Process)"
 
-    metric_card(SYM["r_th"] + "&nbsp;&nbsp;(K/W)", f"{r_th:.4f}",
-                sub=(f"\u00b1{k}\u03c3 band [{u['r_th_lo'][0]:.4f}, {u['r_th_hi'][0]:.4f}] (symmetric)"
+    metric_card(SYM["r_th"] + "&nbsp;&nbsp;(K/W)", f"{r_th:.3f}",
+                sub=(f"\u00b1{k}\u03c3 band [{u['r_th_lo'][0]:.3f}, {u['r_th_hi'][0]:.3f}] (symmetric)"
                      if has_sd else band_note))
 
-    metric_card(SYM["p_tot"] + "&nbsp;&nbsp;(Pa)", f"{p_tot:.1f}",
-                sub=(f"\u00b1{k}\u03c3 band [{u['p_tot_lo'][0]:.1f}, {u['p_tot_hi'][0]:.1f}] "
+    metric_card(SYM["p_tot"] + "&nbsp;&nbsp;(Pa)", f"{p_tot:.2f}",
+                sub=(f"\u00b1{k}\u03c3 band [{u['p_tot_lo'][0]:.2f}, {u['p_tot_hi'][0]:.2f}] "
                      f"(log-space, asymmetric)" if has_sd else band_note),
                 value_color=(C_OK if feasible else C_ACCENT))
 
@@ -123,5 +123,4 @@ with right:
                                          line=dict(width=2))))
     fig.update_layout(xaxis_title=AX["vp_vs"], yaxis_title=AX["po"])
     st.plotly_chart(base_layout(fig, height=560), use_container_width=True, config=PLOTLY_CONFIG)
-    st.caption("Red line on the pressure-drop surface = the active limit. "
-               f"Open circles = the {A.n} FEM samples.")
+    st.caption("Red line on the pressure-drop surface = the active limit.")

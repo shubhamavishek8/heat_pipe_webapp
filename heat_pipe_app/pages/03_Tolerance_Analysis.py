@@ -58,14 +58,14 @@ yield_pct = (p_s <= ptot_max).mean() * 100.0
 
 m1, m2, m3, m4 = st.columns(4)
 with m1:
-    metric_card(SYM["r_th"] + " mean", f"{r_s.mean():.4f}", sub=f"std {r_s.std():.4f}")
+    metric_card(SYM["r_th"] + " mean", f"{r_s.mean():.3f}", sub=f"std {r_s.std():.3f}")
 with m2:
-    metric_card(SYM["p_tot"] + " mean", f"{p_s.mean():.0f}", sub=f"std {p_s.std():.0f}")
+    metric_card(SYM["p_tot"] + " mean", f"{p_s.mean():.2f}", sub=f"std {p_s.std():.2f}")
 with m3:
     metric_card("Yield  P(" + SYM["p_tot"] + " &le; limit)", f"{yield_pct:.1f}%",
                 value_color=(C_OK if yield_pct >= 99 else C_ACCENT))
 with m4:
-    metric_card(SYM["r_th"] + " 95th pct", f"{np.quantile(r_s,0.95):.4f}")
+    metric_card(SYM["r_th"] + " 95th pct", f"{np.quantile(r_s,0.95):.3f}")
 
 g1, g2 = st.columns(2)
 with g1:
