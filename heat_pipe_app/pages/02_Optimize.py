@@ -137,9 +137,10 @@ fig2.add_trace(go.Contour(x=VP[0], y=PO[:, 0], z=R, colorscale="Viridis",
                                         labelfont=dict(size=11, color="white")),
                           colorbar=dict(title=dict(text=AX["r_th"]))))
 fig2.add_trace(go.Contour(x=VP[0], y=PO[:, 0], z=feas, showscale=False,
+                          colorscale=[[0, C_ACCENT], [1, C_ACCENT]],   # constant -> RED
                           contours=dict(start=0.5, end=0.5, size=1, coloring="lines"),
-                          line=dict(color=C_ACCENT, width=3), hoverinfo="skip",
-                          name="feasibility boundary"))
+                          line=dict(width=3), hoverinfo="skip", showlegend=True,
+                          name=U["p_tot"] + " limit (feasibility boundary)"))
 add_training_points(fig2, A, marker_color="white")
 if sol is not None:
     fig2.add_trace(go.Scatter(x=[sol["vp_vs"]], y=[sol["po"]], mode="markers",

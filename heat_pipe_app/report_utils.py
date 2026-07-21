@@ -93,8 +93,8 @@ class _Report(FPDF):
         self.set_y(-12)
         self.set_font(self.serif, "I", 8)
         self.set_text_color(*MUT)
-        self.cell(0, 5, "Shubhamshree Avishek, Dr. Koushik Das - Department of Mechanical "
-                        "Engineering, NIT Meghalaya, India", align="C")
+        self.cell(0, 5, "Shubhamshree Avishek, Dr. Koushik Das - Department of Mechanical Engineering, "
+                        "NIT Meghalaya, Sohra, Meghalaya, India - 793108", align="C")
 
     def h2(self, txt):
         self.set_font(self.serif, "B", 11)
@@ -206,7 +206,7 @@ def yield_analysis(assets, sol, ptot_max, tol_vp, tol_po, n_mc=20000, seed=42):
 
 
 def build_report_pdf(assets, ptot_max, sol, other, caps, Rfront, status,
-                     yld=None) -> bytes:
+                     yld=None, metrics=None) -> bytes:
     pdf = _Report(format="A4")
     pdf.set_auto_page_break(auto=True, margin=16)
     pdf.add_page()
@@ -222,17 +222,26 @@ def build_report_pdf(assets, ptot_max, sol, other, caps, Rfront, status,
                                f"L_eff = {core.L_EFF:.2f} m")
     pdf.ln(1.5)
 
-    # ---- 2. GPR performance metrics ----------------------------------------- #
-    pdf.h2(f"2. {assets.model_name} performance (leave-one-out cross-validation)")
-    m = assets.manifest
-    if m.get("loocv_overall_r2") is not None:
-        pdf.kv("Overall R2", f"{m['loocv_overall_r2']:.3f}")
-    if m.get("loocv_overall_mae") is not None:
-        pdf.kv("Overall MAE", f"{m['loocv_overall_mae']:.4g}")
-    if m.get("loocv_overall_mse") is not None:
-        pdf.kv("Overall RMSE", f"{m['loocv_overall_mse']**0.5:.4g}")
-    if m.get("selection_basis"):
-        pdf.kv("Selection basis", m["selection_basis"])
+    # ---- 2. model provenance & performance metrics --------------------------- #
+    pdf.h2(f"2. Model provenance & performance ({assets.model_name}, leave-one-out CV)")
+    mt = metrics or {}
+    if mt.get("kernel"):
+        pdf.kv("Kernel", mt["kernel"])
+    if mt.get("r2") is not None:
+        pdf.kv("Overall R2", f"{mt['r2']:.3f}")
+    if mt.get("mae") is not None:
+        pdf.kv("Overall MAE", f"{mt['mae']:.4g}")
+    if mt.get("mse") is not None:
+        pdf.kv("Overall MSE", f"{mt['mse']:.4g}")
+    if mt.get("rmse") is not None:
+        pdf.kv("Overall RMSE", f"{mt['rmse']:.4g}")
+    if not any(mt.get(k) is not None for k in ("r2", "mae", "mse", "rmse")):
+        pdf.kv("Metrics", "not found in the manifests shipped with the artifacts")
+    if mt.get("basis"):
+        pdf.kv("Selection basis", mt["basis"])
+    if mt.get("sklearn_version"):
+        pdf.kv("scikit-learn (pickled with)", mt["sklearn_version"])
+    pdf.kv("Output transform", "dP_tot modelled in log1p space; predictions back-transformed")
     pdf.ln(1.5)
 
     # ---- 3. constrained optimum --------------------------------------------- #

@@ -115,8 +115,10 @@ with right:
     if not is_rth:
         fig.add_trace(go.Contour(
             x=VP[0], y=PO[:, 0], z=P, showscale=False,
+            colorscale=[[0, C_ACCENT], [1, C_ACCENT]],   # constant -> line stays RED
             contours=dict(start=ptot_max, end=ptot_max, size=1, coloring="lines"),
-            line=dict(color=C_ACCENT, width=3), name="limit", hoverinfo="skip"))
+            line=dict(width=3), name=U["p_tot"] + " limit", hoverinfo="skip",
+            showlegend=True))
     add_training_points(fig, A, marker_color="white")
     fig.add_trace(go.Scatter(x=[vp], y=[po], mode="markers", name="your point",
                              marker=dict(size=16, color=C_ACCENT, symbol="x",

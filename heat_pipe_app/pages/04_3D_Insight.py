@@ -5,7 +5,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 import core
-from app_utils import (get_assets, cached_grid, cached_sigma_grid, inject_css,
+from app_utils import (get_assets, cached_grid, inject_css,
                        page_header, style_scene, PLOTLY_CONFIG, SYM, AX, U,
                        C_ACCENT, C_PRIMARY, TEXT, FONT_TNR)
 
@@ -14,14 +14,13 @@ inject_css()
 A = get_assets()
 
 page_header("3D Interactive Insight",
-            f"Rotate, zoom and pan the surrogate surfaces over the design space: the two "
-            f"responses ({SYM['r_th']}, {SYM['p_tot']}) and the model's own uncertainty "
-            f"\u03c3({SYM['r_th']}) - where the surrogate can and cannot be trusted.")
+            f"Rotate, zoom and pan the surrogate response surfaces ({SYM['r_th']} and "
+            f"{SYM['p_tot']}) over the design space, with the pressure-drop constraint "
+            f"plane.")
 
 ctrl = st.columns([1.4, 1, 1])
 with ctrl[0]:
-    _opts = [U["r_th"], U["p_tot"]] + ([U["sigma"]] if A.supports_std else [])
-    which = st.radio("Surface", _opts,
+    which = st.radio("Surface", [U["r_th"], U["p_tot"]],
                      horizontal=True, label_visibility="collapsed")
 with ctrl[1]:
     ptot_max = st.number_input("Pressure-drop limit (Pa)",
@@ -32,15 +31,11 @@ with ctrl[2]:
 VP, PO, R, P = cached_grid(70, 70)
 gx, gy = VP[0], PO[:, 0]
 
-mode = "rth" if which == U["r_th"] else ("ptot" if which == U["p_tot"] else "sigma")
+mode = "rth" if which == U["r_th"] else "ptot"
 
-if mode == "sigma":
-    _, _, Z = cached_sigma_grid(70, 70)
-    zlabel, surf_scale = AX["sigma"], "Magma"
-else:
-    Z = R if mode == "rth" else P
-    zlabel = AX["r_th"] if mode == "rth" else AX["p_tot"]
-    surf_scale = "Viridis" if mode == "rth" else "Plasma"
+Z = R if mode == "rth" else P
+zlabel = AX["r_th"] if mode == "rth" else AX["p_tot"]
+surf_scale = "Viridis" if mode == "rth" else "Plasma"
 
 fig = go.Figure()
 fig.add_trace(go.Surface(
@@ -64,11 +59,7 @@ if mode == "ptot":
 if show_opt:
     sol = core.optimize_min_rth(A, ptot_max=ptot_max)
     if sol is not None:
-        if mode == "sigma":
-            zopt = float(core.predict_with_uncertainty(
-                A, [sol["vp_vs"], sol["po"]], k=1.0)["r_th_sigma"][0])
-        else:
-            zopt = sol["r_th"] if mode == "rth" else sol["p_tot"]
+        zopt = sol["r_th"] if mode == "rth" else sol["p_tot"]
         fig.add_trace(go.Scatter3d(
             x=[sol["vp_vs"]], y=[sol["po"]], z=[zopt], mode="markers",
             name="constrained optimum",
@@ -84,13 +75,7 @@ st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 if mode == "rth":
     st.caption("Resistance surface - the design objective. Lowest values sit toward high "
                "Vp:Vs and low porosity. Drag to rotate; the floor shows projected contours.")
-elif mode == "ptot":
+else:
     st.caption("Pressure-drop surface with the red constraint plane. Wherever the surface "
                "rises above the plane the design is infeasible; the plane-surface "
                "intersection is the feasibility boundary seen in 2-D on the Optimise page.")
-else:
-    st.caption("GPR predictive standard deviation of the thermal resistance. Valleys sit on "
-               f"the {A.n} FEM samples (the model is pinned there); ridges between and beyond "
-               "samples mark where predictions are least certain. Peaks inside the feasible "
-               "region are the best candidate locations for the NEXT FEM simulation, and a "
-               "high \u03c3 at the optimum warns that the optimum itself is uncertain.")

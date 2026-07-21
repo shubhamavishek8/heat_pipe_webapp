@@ -83,6 +83,8 @@ if len(df_in) > MAX_ROWS:
     st.warning(f"Input has {len(df_in)} rows; using the first {MAX_ROWS}.")
     df_in = df_in.head(MAX_ROWS)
 
+df_in["vp_vs"] = np.round(df_in["vp_vs"].astype(float), 3)
+df_in["po"] = np.round(df_in["po"].astype(float), 3)
 X = df_in[["vp_vs", "po"]].to_numpy(dtype=float)
 u = core.predict_with_uncertainty(A, X, k=2.0)
 
@@ -95,7 +97,7 @@ out["p_tot_Pa"] = np.round(u["p_tot"], 2)
 if A.supports_std:
     out["p_tot_lo_2sig"] = np.round(u["p_tot_lo"], 2)
     out["p_tot_hi_2sig"] = np.round(u["p_tot_hi"], 2)
-out["k_eq_W_per_mK"] = np.round([core.k_eq_from_rth(r) for r in u["r_th"]], 0)
+out["k_eq_W_per_mK"] = np.round([core.k_eq_from_rth(r) for r in u["r_th"]], 2)
 out["feasible"] = u["p_tot"] <= ptot_max
 levels, in_dom = [], []
 for x in X:                                     # per-point trust flag
@@ -114,18 +116,20 @@ st.markdown(f"**{len(out)} points evaluated** - {n_feas} feasible at "
             unsafe_allow_html=True)
 
 
-def _style(row):
-    if not row["feasible"]:
-        return [f"color:{C_ACCENT}"] * len(row)
-    if row["domain_trust"] != "high":
-        return [f"color:#b9770e"] * len(row)
-    return [""] * len(row)
-
-
-st.dataframe(out.style.apply(_style, axis=1), use_container_width=True, height=380)
+_cc = {"vp_vs": st.column_config.NumberColumn(format="%.3f"),
+       "po": st.column_config.NumberColumn(format="%.3f"),
+       "r_th_K_per_W": st.column_config.NumberColumn(format="%.3f"),
+       "r_th_lo_2sig": st.column_config.NumberColumn(format="%.3f"),
+       "r_th_hi_2sig": st.column_config.NumberColumn(format="%.3f"),
+       "p_tot_Pa": st.column_config.NumberColumn(format="%.2f"),
+       "p_tot_lo_2sig": st.column_config.NumberColumn(format="%.2f"),
+       "p_tot_hi_2sig": st.column_config.NumberColumn(format="%.2f"),
+       "k_eq_W_per_mK": st.column_config.NumberColumn(format="%.2f")}
+st.dataframe(out, use_container_width=True, height=380,
+             column_config={k: v for k, v in _cc.items() if k in out.columns})
 st.download_button("Download results as CSV",
                    out.to_csv(index=False).encode(),
                    file_name="batch_predictions.csv", mime="text/csv")
-st.caption("Red rows violate the pressure-drop limit; amber rows sit in reduced-trust "
-           "regions (near or beyond the sampled domain). Bands are GPR \u00b12\u03c3; "
-           "p_tot bands are asymmetric because the model works in log space.")
+st.caption("The feasible column flags the pressure-drop limit; domain_trust flags "
+           "reduced-trust regions (near or beyond the sampled domain). Bands are GPR "
+           "\u00b12\u03c3; p_tot bands are asymmetric because the model works in log space.")

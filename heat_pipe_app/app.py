@@ -55,8 +55,7 @@ with c1:
         f"- **Predict** - forward prediction with uncertainty bands, a domain guard, and {SYM['k_eq']}\n"
         f"- **Optimise** - constrained min-{SYM['r_th']} (SLSQP) + {SYM['r_th']}/{SYM['p_tot']} trade-off front\n"
         "- **Tolerance Analysis** - manufacturing-tolerance propagation & yield\n"
-        "- **3D Insight** - response surfaces and the model-uncertainty surface\n"
-        f"- **Next Experiment** - \u03c3 map with suggested locations for the next FEM run\n"
+        "- **3D Insight** - interactive response surfaces with the constraint plane\n"
         "- **Compare Models** - every saved surrogate\u0027s prediction at one design point, side by side\n"
         "- **Batch Predict** - CSV in, predictions + bands + feasibility out\n"
         "- **Report** - one-click PDF summary of the headline results\n"
@@ -94,14 +93,14 @@ with c1:
         )
 
 with c2:
-    st.subheader("Design space")
+    st.subheader("Design bounds")
     lo_vp, hi_vp = core.BOUNDS["vp_vs"]
     lo_po, hi_po = core.BOUNDS["po"]
-    fig = go.Figure()
-    fig.add_shape(type="rect", x0=lo_vp, x1=hi_vp, y0=lo_po, y1=hi_po,
-                  line=dict(color=C_ACCENT, dash="dash"))
-    fig.update_layout(xaxis_title=AX["vp_vs"], yaxis_title=AX["po"], showlegend=False)
-    fig.update_xaxes(range=[lo_vp - 0.03, hi_vp + 0.03])
-    fig.update_yaxes(range=[lo_po - 0.02, hi_po + 0.02])
-    st.plotly_chart(base_layout(fig), use_container_width=True, config=PLOTLY_CONFIG)
-    st.caption("Dashed box = design bounds (= dataset min/max). Predictions outside it are extrapolation.")
+    st.markdown(
+        f"The surrogate is trained over "
+        f"{SYM['vp_vs']} \u2208 [{lo_vp:.3f}, {hi_vp:.3f}] and "
+        f"{SYM['po']} \u2208 [{lo_po:.3f}, {hi_po:.3f}] "
+        f"(n = {A.n} FEM simulations). Every page carries a domain-of-validity "
+        f"indicator; predictions outside these bounds are extrapolation and are "
+        f"flagged accordingly.",
+        unsafe_allow_html=True)

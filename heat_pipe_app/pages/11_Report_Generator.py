@@ -7,7 +7,7 @@ import streamlit as st
 
 import core
 import report_utils
-from app_utils import (get_assets, cached_pareto, inject_css, page_header,
+from app_utils import (get_assets, get_model_bank, cached_pareto, inject_css, page_header,
                        metric_card, SYM, MUTED, C_OK)
 
 st.set_page_config(page_title="Report", page_icon="\U0001f321\ufe0f", layout="wide")
@@ -34,7 +34,7 @@ with c2:
     st.markdown(
         f"**The report contains:**\n"
         f"1. Surrogate provenance - best model, n, design space, fixed physical parameters\n"
-        f"2. {A.model_name} performance metrics - LOOCV R\u00b2, MAE, RMSE\n"
+        f"2. Model provenance & performance - kernel, LOOCV R\u00b2, MAE, MSE, RMSE\n"
         f"3. The constrained optimum at your chosen limit - design, minimum "
         f"{SYM['r_th']}, {SYM['p_tot']}, slack, {SYM['k_eq']}, solver, grid cross-check, "
         f"domain trust\n"
@@ -51,8 +51,26 @@ if go_btn:
         status = core.domain_status(A, [sol["vp_vs"], sol["po"]]) if sol is not None else None
         yld = (report_utils.yield_analysis(A, sol, ptot_max, tol_vp, tol_po)
                if sol is not None else None)
+        # metrics: best-model manifest first, then the all-models manifest
+        m = A.manifest
+        metrics = {"r2": m.get("loocv_overall_r2"), "mae": m.get("loocv_overall_mae"),
+                   "mse": m.get("loocv_overall_mse"), "basis": m.get("selection_basis"),
+                   "sklearn_version": A.sklearn_version}
+        bank = get_model_bank()
+        if bank.available and any(metrics[k] is None for k in ("r2", "mae", "mse")):
+            lo = bank.status.get(bank.best_name, {}).get("loocv", {})
+            metrics["r2"] = metrics["r2"] if metrics["r2"] is not None else lo.get("overall_r2")
+            metrics["mae"] = metrics["mae"] if metrics["mae"] is not None else lo.get("overall_mae")
+            rm = lo.get("overall_rmse")
+            if metrics["mse"] is None and rm is not None:
+                metrics["mse"] = rm ** 2
+        metrics["rmse"] = (metrics["mse"] ** 0.5) if metrics.get("mse") is not None else None
+        try:
+            metrics["kernel"] = str(A.model.kernel_)[:90]
+        except Exception:
+            metrics["kernel"] = None
         pdf_bytes = report_utils.build_report_pdf(A, ptot_max, sol, other, caps, Rf,
-                                                  status, yld)
+                                                  status, yld, metrics)
     if sol is not None:
         metric_card("Optimum captured in the report",
                     f"{sol['r_th']:.3f} K/W",
