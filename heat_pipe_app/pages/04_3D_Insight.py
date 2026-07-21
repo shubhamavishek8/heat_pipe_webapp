@@ -1,0 +1,81 @@
+"""Page 4 - 3D interactive insights: response surfaces AND the GPR
+model-uncertainty surface over the design space."""
+import numpy as np
+import streamlit as st
+import plotly.graph_objects as go
+
+import core
+from app_utils import (get_assets, cached_grid, inject_css,
+                       page_header, style_scene, PLOTLY_CONFIG, SYM, AX, U,
+                       C_ACCENT, C_PRIMARY, TEXT, FONT_TNR)
+
+st.set_page_config(page_title="3D Insight", page_icon="\U0001f321\ufe0f", layout="wide")
+inject_css()
+A = get_assets()
+
+page_header("3D Interactive Insight",
+            f"Rotate, zoom and pan the surrogate response surfaces ({SYM['r_th']} and "
+            f"{SYM['p_tot']}) over the design space, with the pressure-drop constraint "
+            f"plane.")
+
+ctrl = st.columns([1.4, 1, 1])
+with ctrl[0]:
+    which = st.radio("Surface", [U["r_th"], U["p_tot"]],
+                     horizontal=True, label_visibility="collapsed")
+with ctrl[1]:
+    ptot_max = st.number_input("Pressure-drop limit (Pa)",
+                               value=core.PTOT_MAX_DEFAULT, step=100.0)
+with ctrl[2]:
+    show_opt = st.checkbox("Show optimum", value=True)
+
+VP, PO, R, P = cached_grid(70, 70)
+gx, gy = VP[0], PO[:, 0]
+
+mode = "rth" if which == U["r_th"] else "ptot"
+
+Z = R if mode == "rth" else P
+zlabel = AX["r_th"] if mode == "rth" else AX["p_tot"]
+surf_scale = "Viridis" if mode == "rth" else "Plasma"
+
+fig = go.Figure()
+fig.add_trace(go.Surface(
+    x=gx, y=gy, z=Z, colorscale=surf_scale, opacity=0.95,
+    colorbar=dict(title=dict(text=zlabel, font=dict(family=FONT_TNR, size=15, color=TEXT)),
+                  tickfont=dict(family=FONT_TNR, size=12, color=TEXT), len=0.6),
+    contours={"z": {"show": True, "usecolormap": True, "project_z": True}},
+    name=which,
+    hovertemplate="V<sub>p</sub>:V<sub>s</sub>=%{x:.3f}<br><i>\u03b5</i>=%{y:.3f}<br>"
+                  + zlabel + "=%{z:.3g}<extra></extra>"))
+
+# Constraint plane (only meaningful on the pressure-drop surface)
+if mode == "ptot":
+    plane = np.full_like(Z, ptot_max)
+    fig.add_trace(go.Surface(
+        x=gx, y=gy, z=plane, showscale=False, opacity=0.35,
+        colorscale=[[0, C_ACCENT], [1, C_ACCENT]],
+        name=f"limit = {ptot_max:.0f} Pa", hoverinfo="skip", showlegend=True))
+
+# Constrained optimum marker
+if show_opt:
+    sol = core.optimize_min_rth(A, ptot_max=ptot_max)
+    if sol is not None:
+        zopt = sol["r_th"] if mode == "rth" else sol["p_tot"]
+        fig.add_trace(go.Scatter3d(
+            x=[sol["vp_vs"]], y=[sol["po"]], z=[zopt], mode="markers",
+            name="constrained optimum",
+            marker=dict(size=8, color=C_ACCENT, symbol="diamond",
+                        line=dict(width=1, color="white")),
+            hovertemplate=f"OPTIMUM<br>{zlabel}={zopt:.3g}<extra></extra>"))
+
+fig.update_layout(scene=dict(zaxis=dict(
+    title=dict(text=zlabel, font=dict(family=FONT_TNR, size=15, color=TEXT)))))
+style_scene(fig, height=660)
+st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+
+if mode == "rth":
+    st.caption("Resistance surface - the design objective. Lowest values sit toward high "
+               "Vp:Vs and low porosity. Drag to rotate; the floor shows projected contours.")
+else:
+    st.caption("Pressure-drop surface with the red constraint plane. Wherever the surface "
+               "rises above the plane the design is infeasible; the plane-surface "
+               "intersection is the feasibility boundary seen in 2-D on the Optimise page.")
