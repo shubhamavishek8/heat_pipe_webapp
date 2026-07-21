@@ -63,6 +63,19 @@ with c1:
         unsafe_allow_html=True,
     )
 
+with c2:
+    st.subheader("Design bounds")
+    lo_vp, hi_vp = core.BOUNDS["vp_vs"]
+    lo_po, hi_po = core.BOUNDS["po"]
+    st.markdown(
+        f"The surrogate is trained over "
+        f"{SYM['vp_vs']} \u2208 [{lo_vp:.3f}, {hi_vp:.3f}] and "
+        f"{SYM['po']} \u2208 [{lo_po:.3f}, {hi_po:.3f}] "
+        f"(n = {A.n} FEM simulations). Every page carries a domain-of-validity "
+        f"indicator; predictions outside these bounds are extrapolation and are "
+        f"flagged accordingly.",
+        unsafe_allow_html=True)
+
     st.subheader("Model provenance")
     m = A.manifest
     is_gpr = ("gaussian" in A.model_class.lower()) or ("gpr" in str(A.model_name).lower())
@@ -83,24 +96,11 @@ with c1:
     if not A.supports_std:
         st.caption(
             f"This deployment uses a {A.model_name} surrogate, which yields point "
-            f"predictions. Forecast bands, the uncertainty surface and the Next-Experiment "
-            f"page are inactive; prediction, optimisation and tolerance analysis work normally."
+            f"predictions. Forecast bands and the uncertainty surface are inactive; "
+            f"prediction, optimisation and tolerance analysis work normally."
         )
     else:
         st.caption(
             f"Small-sample caveat: with n={A.n} the surrogate is reliable only inside the sampled "
             "region. Every page shows a domain-of-validity indicator; heed it before trusting a number."
         )
-
-with c2:
-    st.subheader("Design bounds")
-    lo_vp, hi_vp = core.BOUNDS["vp_vs"]
-    lo_po, hi_po = core.BOUNDS["po"]
-    st.markdown(
-        f"The surrogate is trained over "
-        f"{SYM['vp_vs']} \u2208 [{lo_vp:.3f}, {hi_vp:.3f}] and "
-        f"{SYM['po']} \u2208 [{lo_po:.3f}, {hi_po:.3f}] "
-        f"(n = {A.n} FEM simulations). Every page carries a domain-of-validity "
-        f"indicator; predictions outside these bounds are extrapolation and are "
-        f"flagged accordingly.",
-        unsafe_allow_html=True)

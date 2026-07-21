@@ -145,7 +145,7 @@ out["dP_tot (Pa)"] = p
 if A.supports_std:
     out["dP_tot low -2sig (Pa)"] = p_lo
     out["dP_tot high +2sig (Pa)"] = p_hi
-out["k_eq (W/m/K)"] = keq
+out["k_eq (W/m.K)"] = keq
 out["feasible"] = feas
 out["domain trust"] = trust
 for extra in [c for c in df_in.columns if c not in ("vp_vs", "po")]:
@@ -162,40 +162,42 @@ st.markdown(
     unsafe_allow_html=True)
 
 with st.expander("How are 'feasible' and 'domain trust' decided?"):
+    _R = "R\u209c\u2095"; _P = "\u0394P\u209c\u2092\u209c"
+    _Vp = "V\u209a:V\u209b"; _eps = "\u03b5"; _sig = "\u03c3"
     st.markdown(
         f"""
 **feasible** - purely the pressure-drop constraint: a point is feasible when its
-*predicted* {SYM['p_tot']} is at or below your limit.
+*predicted* {_P} is at or below your limit.
 
-> `feasible = (predicted \u0394P_tot \u2264 limit)`
+> `feasible = (predicted dP_tot \u2264 limit)`
 
-*Example (limit {ptot_max:.0f} Pa):* a point predicting {SYM['p_tot']} = 3062.59 Pa is
+*Example (limit {ptot_max:.0f} Pa):* a point predicting {_P} = 3062.59 Pa is
 **feasible** (3062.59 \u2264 {ptot_max:.0f}); one predicting 17042.01 Pa is **infeasible**.
 
 **domain trust** - how far the point sits from the data the surrogate actually
 saw, combining two geometric checks and one statistical check:
 
 1. **Inside the box?** Are both inputs within the trained bounds
-   (V\u209a:V\u209b \u2208 [{lb_vp:.3f}, {ub_vp:.3f}], \u03b5 \u2208 [{lb_po:.3f}, {ub_po:.3f}])?
+   ({_Vp} \u2208 [{lb_vp:.3f}, {ub_vp:.3f}], {_eps} \u2208 [{lb_po:.3f}, {ub_po:.3f}])?
 2. **Inside the convex hull?** Is the point inside the polygon spanned by the FEM
    sample locations (a tighter test than the box - the box can contain corners the
    samples never reach)?
-3. **\u03c3 percentile.** Where does this point's GPR predictive standard deviation
-   fall relative to the spread of \u03c3 over a dense in-domain grid? A high percentile
+3. **{_sig} percentile.** Where does this point's GPR predictive standard deviation
+   fall relative to the spread of {_sig} over a dense in-domain grid? A high percentile
    means the model is unusually unsure here even if geometrically inside.
 
 The three tiers:
 
 | tier | condition |
 |------|-----------|
-| **low** | outside the box **or** \u03c3 in the top 1% (\u2265 99th percentile) |
-| **moderate** | outside the convex hull (but inside the box) **or** \u03c3 \u2265 90th percentile |
-| **high** | inside the hull **and** \u03c3 below the 90th percentile |
+| **low** | outside the box **or** {_sig} in the top 1% (\u2265 99th percentile) |
+| **moderate** | outside the convex hull (but inside the box) **or** {_sig} \u2265 90th percentile |
+| **high** | inside the hull **and** {_sig} below the 90th percentile |
 
-*Example:* (V\u209a:V\u209b = 0.20, \u03b5 = 0.50) is inside the box and hull with low \u03c3
-\u2192 **high**. A point at \u03b5 = 0.20 fails check 1 (below the \u03b5 lower bound
-{lb_po:.3f}); here it is reported as **outside bounds** and skipped entirely rather
-than trusted.
+*Example:* ({_Vp} = 0.200, {_eps} = 0.500) is inside the box and hull with low {_sig}
+\u2192 **high**. A point at {_eps} = 0.200 fails check 1 (below the {_eps} lower bound
+{lb_po:.3f}); it is reported as **outside bounds** and skipped entirely rather than
+trusted.
 """)
 
 _cc = {"Vp:Vs": st.column_config.NumberColumn("V\u209a:V\u209b", format="%.3f"),
@@ -206,7 +208,7 @@ _cc = {"Vp:Vs": st.column_config.NumberColumn("V\u209a:V\u209b", format="%.3f"),
        "dP_tot (Pa)": st.column_config.NumberColumn("\u0394P\u209c\u2092\u209c (Pa)", format="%.2f"),
        "dP_tot low -2sig (Pa)": st.column_config.NumberColumn("\u0394P\u209c\u2092\u209c low (\u22122\u03c3)", format="%.2f"),
        "dP_tot high +2sig (Pa)": st.column_config.NumberColumn("\u0394P\u209c\u2092\u209c high (+2\u03c3)", format="%.2f"),
-       "k_eq (W/m/K)": st.column_config.NumberColumn("k_eq (W/m/K)", format="%.2f"),
+       "k_eq (W/m.K)": st.column_config.NumberColumn("kₑq (W/m·K)", format="%.2f"),
        "feasible": st.column_config.TextColumn("feasible"),
        "domain trust": st.column_config.TextColumn("domain trust")}
 st.dataframe(out, use_container_width=True, height=380,
