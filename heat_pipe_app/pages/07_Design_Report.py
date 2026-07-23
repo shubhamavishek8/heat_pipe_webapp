@@ -18,7 +18,7 @@ page_header("Design Report",
             f"One click compiles the surrogate provenance, {A.model_name} performance "
             f"metrics, the constrained optimum with {SYM['k_eq']}, a manufacturing-yield "
             f"analysis at that optimum, and the Pareto front into a one-page PDF - "
-            f"reviewer-ready and generated live from the model.")
+            f"generated live from the model.")
 
 c1, c2 = st.columns([1, 2], gap="large")
 with c1:
