@@ -36,7 +36,7 @@ author_card("SA", "Shubhamshree Avishek", "Research Scholar", affil)
 author_card("KD", "Dr. Koushik Das", "Associate Professor", affil)
 
 
-st.markdown("---")
+st.markdown("--")
 st.subheader("About this work")
 st.markdown(
     "<div style='color:" + TEXT + "'>"
