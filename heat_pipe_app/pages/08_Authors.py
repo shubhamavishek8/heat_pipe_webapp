@@ -35,6 +35,8 @@ affil = ("Department of Mechanical Engineering, National Institute of Technology
 author_card("SA", "Shubhamshree Avishek", "Research Scholar", affil)
 author_card("KD", "Dr. Koushik Das", "Associate Professor", affil)
 
+
+st.markdown("---")
 st.subheader("About this work")
 st.markdown(
     "<div style='color:" + TEXT + "'>"
