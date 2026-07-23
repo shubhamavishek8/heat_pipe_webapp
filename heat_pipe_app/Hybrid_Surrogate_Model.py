@@ -52,7 +52,7 @@ c1, c2 = st.columns([1, 1.1], gap="large")
 with c1:
     st.subheader("Pages")
     st.markdown(
-        f"- **Forward Prediction** : single-point prediction with uncertainty bands and a response surface"
+        f"- **Forward Prediction** : single-point prediction with uncertainty bands and a response surface\n"
         f"- **Constrained Optimisation** : min-{SYM['r_th']} (SLSQP + Grid Search) and the {SYM['r_th']}/{SYM['p_tot']} trade-off Pareto front\n"
         "- **Tolerance Analysis** : manufacturing-tolerance propagation & yield\n"
         "- **3D Insight** : interactive response surfaces with the constraint plane\n"
@@ -101,5 +101,5 @@ with c2:
         )
     else:
         st.caption(
-            f" The domain-of-validity indicator provides a soft indication of the trust region."
+            f" The validation of GPR with the FEM dataset on unseen points signifies a close agreement with a maximum of 2.31% and 1.30% error for {SYM['r_th']} and {SYM['p_tot']}, respectively"
         )
