@@ -17,11 +17,11 @@ inject_css()
 A = get_assets()
 
 page_header("Batch Prediction",
-            f"Evaluate many design points in one go. Upload a CSV (columns: vp_vs, po) or "
-            f"paste values; get {SYM['r_th']}, {SYM['p_tot']} (with \u00b12\u03c3 bands), "
-            f"{SYM['k_eq']}, feasibility and a domain-trust flag per point - and download "
-            f"everything as CSV. Points outside the design bounds are skipped, not "
-            f"extrapolated.")
+            f"Evaluate multiple design points in one go. Either, upload a CSV (columns: vp_vs, po) or "
+            f"insert values to get {SYM['r_th']}, {SYM['k_eq']}, {SYM['p_tot']} (with \u00b12\u03c3 bands), "
+            f"feasibility and a domain-trust flag per point. Download "
+            f"everything as CSV.\n"
+            f"Note: Points outside the design bounds are skipped, not extrapolated.")
 
 MAX_ROWS = 2000
 
