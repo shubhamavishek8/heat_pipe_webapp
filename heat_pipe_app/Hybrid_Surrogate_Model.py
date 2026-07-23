@@ -101,5 +101,6 @@ with c2:
         )
     else:
         st.caption(
-            f" The validation of GPR with the FEM dataset on unseen points signifies a close agreement with a maximum of 2.31% and 1.30% error for {SYM['r_th']} and {SYM['p_tot']}, respectively"
+            f"The validation of GPR with the FEM dataset on unseen points signifies a close agreement with a maximum of 2.31% and 1.30% error for {SYM['r_th']} and {SYM['p_tot']}, respectively.",
+            unsafe_allow_html=True
         )
