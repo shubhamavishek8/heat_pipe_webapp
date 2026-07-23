@@ -15,7 +15,7 @@ inject_css()
 A = get_assets()
 
 page_header("Constrained Optimisation",
-            f"minimise {SYM['r_th']}({SYM['vp_vs']}, {SYM['po']}) subject to "
+            f"Condition: minimise {SYM['r_th']}({SYM['vp_vs']}, {SYM['po']}) subject to "
             f"{SYM['p_tot']} &le; limit.")
 
 top_l, top_r = st.columns([1.6, 1], gap="large")
