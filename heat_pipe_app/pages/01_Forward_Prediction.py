@@ -30,8 +30,8 @@ if "vp" in qp and "pred_vp_sl" not in st.session_state:
         pass
 
 page_header("Forward Prediction",
-            f"Set a design point; get {SYM['r_th']}, {SYM['p_tot']} and the equivalent "
-            f"thermal conductivity {SYM['k_eq']}, each with a predictive interval and a "
+            f"Set a design point and get {SYM['r_th']}, {SYM['k_eq']}, and {SYM['p_tot']} "
+            f", each with a predictive interval and a "
             f"trust signal.")
 
 left, right = st.columns([1, 1.4], gap="large")
@@ -83,7 +83,7 @@ with left:
                     f"L<sub>eff</sub> = {core.L_EFF:.2f} m)")
 
     st.markdown(
-        f"<b>Constraint:</b> {'feasible' if feasible else 'violates limit'} "
+        f"<b>Constraint:</b> {'Feasible' if feasible else 'Violates Limit'} "
         f"({SYM['p_tot']} {'&le;' if feasible else '&gt;'} {ptot_max:.0f} Pa)",
         unsafe_allow_html=True)
 
