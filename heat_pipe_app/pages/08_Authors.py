@@ -35,12 +35,12 @@ affil = ("Department of Mechanical Engineering, National Institute of Technology
 author_card("SA", "Shubhamshree Avishek", "Research Scholar", affil)
 author_card("KD", "Dr. Koushik Das", "Associate Professor", affil)
 
-st.subheader("About this work")
 
 st.markdown("---")
+st.subheader("About this work")
 st.markdown(
     "<div style='color:" + TEXT + "'>"
-    "<b>About this work.</b>\n This application accompanies a study on hybrid surrogate-based "
+    "\n This application accompanies a study on hybrid surrogate-based "
     "model of a modified FHP. Initially, a finite-element based thermal-hydraulic model is emulated by "
     "machine-learning surrogates (selected by LOOCV and FEM validation) and coupled with an optimizer. The built surrogate enables "
     "instant prediction, constrained design optimisation, manufacturing-tolerance "
