@@ -16,10 +16,8 @@ A = get_assets()
 bank = get_model_bank()
 
 page_header("Compare Models",
-            f"One design point, every saved surrogate. Compare each model's "
-            f"{SYM['r_th']} and {SYM['p_tot']} prediction against the others and against "
-            f"their leave-one-out cross-validation scores, to see which model is most "
-            f"trustworthy.")
+            f"Compare {SYM['r_th']} and {SYM['p_tot']} predictions of ML models along with LOOCV score.")
+
 
 if not bank.available:
     st.info("No `all_models_manifest.json` was found in artifacts/. This page needs the "
@@ -104,16 +102,15 @@ st.markdown(f"<table style='width:100%;border-collapse:collapse;font-family:{FON
 if sig is not None:
     st.caption(f"GPR is the only model with a predictive interval: its \u00b12\u03c3 band on "
                f"{SYM['p_tot']} here is [{sig[0]:.2f}, {sig[1]:.2f}] Pa. The other models return "
-               f"point estimates only. Star marks the pipeline's LOOCV-selected best model.")
+               f"point estimates only. Star marks the pipeline's LOOCV-selected best model.",
+               unsafe_allow_html=True)
 
 unavailable = [r for r in rows if not r["avail"]]
 if unavailable:
     names = ", ".join(r["name"] for r in unavailable)
-    st.caption(f"Not shown: {names}. ANN needs TensorFlow and XGBoost needs the xgboost "
-               f"package at load time; on the 1 GB Streamlit Community Cloud tier these are "
-               f"omitted by default. Add them to requirements.txt to load those models live, "
-               f"or drop a precomputed all_models_grid.npz into artifacts/ to compare them "
-               f"with no heavy dependencies.")
+    st.caption(f"Not shown: {names}. ANN needs TensorFlow "
+               f"package at load time. On the 1 GB Streamlit Community Cloud tier this is omitted by default.")
+
 
 st.caption("Note: LOOCV R\u00b2 (from training) measures held-out accuracy over the whole "
            "dataset; the per-point predictions above show how the models diverge at a "
