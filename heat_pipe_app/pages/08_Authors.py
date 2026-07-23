@@ -8,7 +8,7 @@ st.set_page_config(page_title="Authors", page_icon="\U0001f321\ufe0f", layout="w
 inject_css()
 
 page_header("Authors",
-            "The people behind this study and application.")
+            "The web application is developed by,")
 
 
 def author_card(initials, name, role, affiliation):
@@ -30,7 +30,7 @@ def author_card(initials, name, role, affiliation):
 
 
 affil = ("Department of Mechanical Engineering, National Institute of Technology "
-         "Meghalaya, Sohra, Meghalaya, India - 793108")
+         "Meghalaya, Sohra, Meghalaya, India - 793108.")
 
 author_card("SA", "Shubhamshree Avishek", "Research Scholar", affil)
 author_card("KD", "Dr. Koushik Das", "Associate Professor", affil)
@@ -38,7 +38,7 @@ author_card("KD", "Dr. Koushik Das", "Associate Professor", affil)
 st.markdown("---")
 st.markdown(
     "<div style='color:" + TEXT + "'>"
-    "<b>About this work.</b> This application accompanies a study on surrogate-based "
+    "<b>About this work.</b>\n This application accompanies a study on surrogate-based "
     "design of heat pipes: a finite-element thermal-hydraulic model is emulated by "
     "machine-learning surrogates (selected by leave-one-out cross-validation), enabling "
     "instant prediction, constrained design optimisation, manufacturing-tolerance "
