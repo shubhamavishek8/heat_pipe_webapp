@@ -12,15 +12,15 @@ inject_css()
 A = get_assets()
 
 page_header("Hybrid Surrogate Model",
-            "GPR surrogate of an FEM heat-pipe model - predict, optimise, and stress-test designs "
+            "A hybrid surrogate model of a modified Flattened Heat Pipe (FHP) - predict, optimise, and stress-test designs "
             "without rerunning the solver.")
 
 st.markdown(
     f"""
-This app wraps a **Gaussian Process Regression** surrogate trained on a finite-element
-heat-pipe dataset. It maps two design variables to two performance outputs and lets you
+This app wraps a **Gaussian Process Regression** Machine Learning (ML) model trained on a finite-element
+FHP dataset. It maps two design variables to two performance outputs and lets you
 explore the design space interactively. **No model is retrained** - every page loads the
-exact surrogate selected by leave-one-out cross-validation in the offline pipeline.
+exact surrogate selected by leave-one-out cross-validation (LOOCV) in the offline pipeline.
 """,
     unsafe_allow_html=True,
 )
@@ -32,7 +32,7 @@ st.markdown(
     <th style="text-align:left;padding:6px">Design variables (inputs)</th>
     <th style="text-align:left;padding:6px">Performance outputs</th></tr>
   <tr style="border-bottom:1px solid #eef1f6">
-    <td style="padding:6px">{SYM['vp_vs']} - primary/secondary wick volume ratio</td>
+    <td style="padding:6px">{SYM['vp_vs']} - primary:secondary wick volume ratio</td>
     <td style="padding:6px">{SYM['r_th']} - thermal resistance (K/W), <i>minimise</i></td></tr>
   <tr>
     <td style="padding:6px">{SYM['po']} - wick porosity</td>
@@ -43,7 +43,7 @@ st.markdown(
 )
 st.markdown(
     f"<p style='margin-top:10px'><b>Optimisation goal:</b> minimise {SYM['r_th']} "
-    f"subject to {SYM['p_tot']} &le; limit (default 4200 Pa).</p>",
+    f"subject to {SYM['p_tot']} &le; limit (default 4358 Pa).</p>",
     unsafe_allow_html=True,
 )
 
@@ -52,14 +52,14 @@ c1, c2 = st.columns([1, 1.1], gap="large")
 with c1:
     st.subheader("Pages")
     st.markdown(
-        f"- **Forward Prediction** - single-point prediction with uncertainty bands, a domain guard, and {SYM['k_eq']}\n"
-        f"- **Constrained Optimisation** - min-{SYM['r_th']} (SLSQP + grid search) and the {SYM['r_th']}/{SYM['p_tot']} trade-off front\n"
-        "- **Tolerance Analysis** - manufacturing-tolerance propagation & yield\n"
-        "- **3D Insight** - interactive response surfaces with the constraint plane\n"
-        "- **Compare Models** - every saved surrogate\u0027s prediction at one design point\n"
-        "- **Batch Prediction** - CSV in, predictions + bands + feasibility out\n"
-        "- **Design Report** - one-click PDF summary of the headline results\n"
-        "- **Authors** - who is behind the study",
+        f"- **Forward Prediction** : single-point prediction with uncertainty bands and a response surface"
+        f"- **Constrained Optimisation** : min-{SYM['r_th']} (SLSQP + Grid Search) and the {SYM['r_th']}/{SYM['p_tot']} trade-off Pareto front\n"
+        "- **Tolerance Analysis** : manufacturing-tolerance propagation & yield\n"
+        "- **3D Insight** : interactive response surfaces with the constraint plane\n"
+        "- **Compare Models** : comparison of every saved surrogate\u0027s prediction at one design point\n"
+        "- **Batch Prediction** : bulk prediction of design points with results export feature\n"
+        "- **Design Report** : one-click PDF summary of the present study\n"
+        "- **Authors** : attribution and affiliation",
         unsafe_allow_html=True,
     )
 
@@ -69,8 +69,8 @@ with c2:
     lo_po, hi_po = core.BOUNDS["po"]
     st.markdown(
         f"The surrogate is trained over "
-        f"{SYM['vp_vs']} \u2208 [{lo_vp:.3f}, {hi_vp:.3f}] and "
-        f"{SYM['po']} \u2208 [{lo_po:.3f}, {hi_po:.3f}] "
+        f"{SYM['vp_vs']} \u2208 [{lo_vp:.2f}, {hi_vp:.2f}] and "
+        f"{SYM['po']} \u2208 [{lo_po:.2f}, {hi_po:.2f}] "
         f"(n = {A.n} FEM simulations). Every page carries a domain-of-validity "
         f"indicator; predictions outside these bounds are extrapolation and are "
         f"flagged accordingly.",
@@ -101,6 +101,5 @@ with c2:
         )
     else:
         st.caption(
-            f"Small-sample caveat: with n={A.n} the surrogate is reliable only inside the sampled "
-            "region. Every page shows a domain-of-validity indicator; heed it before trusting a number."
+            f" The domain-of-validity indicator provides a soft indication of the trust region."
         )
