@@ -12,7 +12,7 @@ st.set_page_config(page_title="Tolerance Analysis", page_icon="\U0001f321\ufe0f"
 inject_css()
 A = get_assets()
 
-page_header("Manufacturing-Tolerance Analysis",
+page_header("Tolerance Analysis",
             "Propagate fabrication scatter on the design variables through the surrogate to a "
             "performance distribution and a yield (probability of meeting the pressure-drop limit).")
 

@@ -1,4 +1,4 @@
-# Heat-Pipe Surrogate & Design Optimiser
+# Hybrid Surrogate Model
 
 A Streamlit web app that wraps a **Gaussian Process Regression (GPR)** surrogate of an
 FEM heat-pipe model. It predicts thermal resistance (R_th) and total pressure drop

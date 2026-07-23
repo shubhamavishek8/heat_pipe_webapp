@@ -13,7 +13,7 @@ st.set_page_config(page_title="3D Insight", page_icon="\U0001f321\ufe0f", layout
 inject_css()
 A = get_assets()
 
-page_header("3D Interactive Insight",
+page_header("3D Insight",
             f"Rotate, zoom and pan the surrogate response surfaces ({SYM['r_th']} and "
             f"{SYM['p_tot']}) over the design space, with the pressure-drop constraint "
             f"plane.")

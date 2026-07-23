@@ -1,5 +1,5 @@
 """
-core.py - Single source of truth for the Heat-Pipe Surrogate web app.
+core.py - Single source of truth for the Hybrid Surrogate Model web app.
 
 Everything numerically sensitive lives here and is imported by every page so
 that no page can reimplement the prediction / uncertainty / constraint logic
